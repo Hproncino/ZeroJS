@@ -1,8 +1,6 @@
 import 'dotenv/config';
 import { Client, GatewayIntentBits } from 'discord.js';
 import { OpenAI } from 'openai';
-import { Messages } from 'openai/resources/beta/threads/messages.mjs';
-import { Models } from 'openai/resources/models.mjs';
 
 const client = new Client({
     intents: [
