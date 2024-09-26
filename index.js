@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { Client, GatewayIntentBits } from 'discord.js';
 import { OpenAI } from 'openai';
 
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
