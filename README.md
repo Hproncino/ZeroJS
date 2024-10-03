@@ -12,3 +12,9 @@ Estrutura modular que facilita a manutenção e expansão do projeto.
 
 Contato
 Para mais informações, entre em contato através do e-mail: Pimentel2henry@gmail.com
+
+Abaixo estão alguns exemplos de sua execução.
+
+![alt text](image.png)
+
+![alt text](image-1.png)
