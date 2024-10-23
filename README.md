@@ -1,4 +1,4 @@
-Projeto de Integração com a API do ChatGPT no app Discord
+# Projeto de Integração com a API do ChatGPT no app Discord
 
 Este projeto tem como objetivo demonstrar a integração da API do ChatGPT utilizando Node.js e JavaScript. Através desta implementação, conseguimos dar vida a um conceito que vinha sendo idealizado há algum tempo.
 
