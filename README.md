@@ -17,4 +17,5 @@ Abaixo estão alguns exemplos de sua execução.
 
 ![alt text](image.png)
 
-![alt text](image-1.png)
+![image](https://github.com/user-attachments/assets/5330edd2-1507-4119-b089-aaeafcc29954)
+
