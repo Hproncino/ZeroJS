@@ -15,7 +15,7 @@ client.on('ready', () => {
 });
 
 const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY, //Passar a chave de API do OpenAI, discloud não carrega .env
+    apiKey: process.env.OPENAI_API_KEY,
 });
 
 client.on('messageCreate', async (message) => {
@@ -65,7 +65,7 @@ client.on('messageCreate', async (message) => {
         });
 
         const chatCompletion = await openai.chat.completions.create({
-            model: 'gpt-4o',
+            model: 'gpt-3.5-turbo',
             messages: conversationLog,
             max_tokens: 2000,
             temperature: 0.6,
