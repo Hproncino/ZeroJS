@@ -5,7 +5,7 @@ Este projeto tem como objetivo demonstrar a integração da API do ChatGPT utili
 Tecnologias Utilizadas
 - Node.js: Plataforma de desenvolvimento que permite a execução de código JavaScript no lado do servidor.
 - JavaScript: Linguagem de programação utilizada para desenvolver a lógica de integração com a API do ChatGPT.
-- API do ChatGPT: Interface de programação de aplicações fornecida pela OpenAI que permite a interação com o modelo de linguagem GPT-3.
+- API do ChatGPT: Interface de programação de aplicações fornecida pela OpenAI que permite a interação com o modelo de linguagem GPT-3.5-turbo.
 
 ## Funcionalidades ##
 - Integração com a API do ChatGPT para realizar consultas e obter respostas inteligentes.
