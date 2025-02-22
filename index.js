@@ -67,7 +67,9 @@ client.on('messageCreate', async (message) => {
         const chatCompletion = await openai.chat.completions.create({
             model: 'gpt-4o',
             messages: conversationLog,
-            max_tokens: 2000,
+            max_tokens: 1000,
+            temperature: 0.7,
+            top_p: 0.6,
         });
 
         message.reply(chatCompletion.choices[0].message.content);
