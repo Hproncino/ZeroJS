@@ -15,7 +15,7 @@ client.on('ready', () => {
 });
 
 const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY, //Passar a chave de API do OpenAI, discloud não carrega .env
+    apiKey: process.env.OPENAI_API_KEY,
 });
 
 client.on('messageCreate', async (message) => {
