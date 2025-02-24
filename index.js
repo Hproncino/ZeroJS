@@ -23,6 +23,12 @@ client.on('messageCreate', async (message) => {
     if (message.channel.id !== process.env.CHANNEL_ID) return;
     if (message.content.startsWith('!')) return;
 
+    const maxCharacters = 2000;
+    if (message.content.length > maxCharacters) {
+        message.reply(`Minha resposta é muito longa, para uma melhor experiência vou parar por aqui para não travar. Chame o @Hp_ronccino para ver o log e dar sua resposta!`);
+        return;
+    }
+
     let conversationLog = [
         { role: 'system', content: 'Sou um bot :)' },
     ];
@@ -72,7 +78,12 @@ client.on('messageCreate', async (message) => {
             top_p: 0.6,
         });
 
-        message.reply(chatCompletion.choices[0].message.content);
+        const response = chatCompletion.choices[0].message.content;
+        if (response.length > maxCharacters) {
+            message.reply(`Minha resposta é muito longa, para uma melhor experiência vou parar por aqui para não travar. Chame o @Hp_ronccino para ver o log e dar sua resposta!`);
+        } else {
+            message.reply(response);
+        }
 
     } catch (error) {
         console.log(`ERR: ${error}`);
