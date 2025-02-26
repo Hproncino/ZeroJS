@@ -15,7 +15,7 @@ client.on('ready', () => {
 });
 
 const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
+    apiKey: process.env.OpenAI_API_KEY,
 });
 
 client.on('messageCreate', async (message) => {
@@ -25,7 +25,6 @@ client.on('messageCreate', async (message) => {
 
     const maxCharacters = 2000;
     if (message.content.length > maxCharacters) {
-        message.reply(`Minha resposta é muito longa, para uma melhor experiência vou parar por aqui para não travar. Chame o @Hp_ronccino para ver o log e dar sua resposta!`);
         return;
     }
 
@@ -78,9 +77,12 @@ client.on('messageCreate', async (message) => {
             top_p: 0.6,
         });
 
+
         const response = chatCompletion.choices[0].message.content;
+        console.log(`resposta: ${response}`);
+
         if (response.length > maxCharacters) {
-            message.reply(`Minha resposta é muito longa, para uma melhor experiência vou parar por aqui para não travar. Chame o @Hp_ronccino para ver o log e dar sua resposta!`);
+            message.reply(`O discord permite somente 2000 caracteres gerados por bots, para uma melhor experiência vou parar por aqui. Chame o <@444936717410238465> para ver o log e dar sua resposta!`);
         } else {
             message.reply(response);
         }
