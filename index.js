@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { Client, GatewayIntentBits } from 'discord.js';
+import { Client, GatewayIntentBits, ActivityType } from 'discord.js';
 import { OpenAI } from 'openai';
 
 const client = new Client({
@@ -10,13 +10,28 @@ const client = new Client({
     ]
 });
 
+let status = [
+    {
+        name: 'o chat',
+        type: ActivityType.Watching,
+    },
+    {
+        name: 'os membros',
+        type: ActivityType.Listening,
+    },
+]
+    
 client.on('ready', () => {
     console.log('O bot está online');
+
+    setInterval(() => {
+        let random = Math.floor(Math.random() * status.length);
+        client.user.setActivity(status[random]);
+    }, 10000);
 });
 
 const openai = new OpenAI({
-    apiKey: process.env.OpenAI_API_KEY,
-});
+    apiKey: process.env.OPENAI_API_KEY,});
 
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
