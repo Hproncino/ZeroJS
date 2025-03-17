@@ -38,10 +38,16 @@ client.on('messageCreate', async (message) => {
     if (message.channel.id !== process.env.CHANNEL_ID) return;
     if (message.content.startsWith('!')) return;
 
-    const maxCharacters = 2000;
-    if (message.content.length > maxCharacters) {
-        return;
-    }
+    const sendChunks = async (text) => {
+        if (typeof text !== 'string') {
+            console.error('Texto provido não é string');
+            return;
+        }
+        const chunks = text.match(/(.|[\r\n]){1,2000}/g);
+        for (const chunk of chunks) {
+            await message.reply(chunk);
+        }
+    };
 
     let conversationLog = [
         { role: 'system', content: 'Sou um bot :)' },
@@ -49,12 +55,12 @@ client.on('messageCreate', async (message) => {
 
     try {
         await message.channel.sendTyping();
-        let prevMessages = await message.channel.messages.fetch({ limit: 15 });
+        let prevMessages = await message.channel.messages.fetch({ limit: 10 });
         prevMessages.reverse();
 
         prevMessages.forEach((msg) => {
             if (msg.content.startsWith('!')) return;
-            if (msg.author.id !== client.user.id && message.author.bot) return;
+            if (msg.author.id !== client.user.id && msg.author.bot) return;
             if (msg.author.id == client.user.id) {
                 conversationLog.push({
                     role: 'assistant',
@@ -87,20 +93,13 @@ client.on('messageCreate', async (message) => {
         const chatCompletion = await openai.chat.completions.create({
             model: 'gpt-4o',
             messages: conversationLog,
-            max_tokens: 1000,
-            temperature: 0.7,
-            top_p: 0.6,
+            max_completion_tokens: 1000,
         });
 
-
         const response = chatCompletion.choices[0].message.content;
-        console.log(`resposta: ${response}`);
+        console.log(`Resposta: ${response}`);
 
-        if (response.length > maxCharacters) {
-            message.reply(`O discord permite somente 2000 caracteres gerados por bots, para uma melhor experiência vou parar por aqui. Chame o <@444936717410238465> para ver o log e dar sua resposta!`);
-        } else {
-            message.reply(response);
-        }
+        await sendChunks(response);
 
     } catch (error) {
         console.log(`ERR: ${error}`);
