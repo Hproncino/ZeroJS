@@ -16,7 +16,7 @@ let status = [
         type: ActivityType.Watching,
     },
     {
-        name: 'os membros',
+        name: 'as vozes',
         type: ActivityType.Listening,
     },
 ]
@@ -43,7 +43,7 @@ client.on('messageCreate', async (message) => {
             console.error('Texto provido não é string');
             return;
         }
-        const chunks = text.match(/(.|[\r\n]){1,2000}/g);
+        const chunks = text.match(/(.|[\r\n]){1,2000}/g) || [];
         for (const chunk of chunks) {
             await message.reply(chunk);
         }
@@ -56,6 +56,7 @@ client.on('messageCreate', async (message) => {
     try {
         await message.channel.sendTyping();
         let prevMessages = await message.channel.messages.fetch({ limit: 10 });
+        prevMessages = prevMessages.filter(msg => msg.author.id === client.user.id || msg.author.id === message.author.id);
         prevMessages.reverse();
 
         prevMessages.forEach((msg) => {
@@ -91,9 +92,9 @@ client.on('messageCreate', async (message) => {
         });
 
         const chatCompletion = await openai.chat.completions.create({
-            model: 'gpt-4o',
+            model: 'o3-mini-2025-01-31',
             messages: conversationLog,
-            max_completion_tokens: 1000,
+            max_completion_tokens: 1500,
         });
 
         const response = chatCompletion.choices[0].message.content;
