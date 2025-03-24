@@ -92,7 +92,7 @@ client.on('messageCreate', async (message) => {
         });
 
         const chatCompletion = await openai.chat.completions.create({
-            model: 'o3-mini-2025-01-31',
+            model: 'gpt-4o-2024-11-20',
             messages: conversationLog,
             max_completion_tokens: 1500,
         });
