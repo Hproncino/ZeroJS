@@ -22,7 +22,7 @@ Para mais informações, entre em contato através do e-mail: Pimentel2henry@gma
 
 Abaixo estão alguns exemplos de sua execução.
 
-(![alt text](image.png))
+(![alt text](/img/image.png))
 
 ![image](https://github.com/user-attachments/assets/5330edd2-1507-4119-b089-aaeafcc29954)
 
