@@ -50,12 +50,12 @@ client.on('messageCreate', async (message) => {
     };
 
     let conversationLog = [
-        { role: 'system', content: 'Sou um bot :)' },
+        { role: 'system', content: 'Im called Zero, I have a proud, relaxed, convinced and a silly female personality.' },
     ];
 
     try {
         await message.channel.sendTyping();
-        let prevMessages = await message.channel.messages.fetch({ limit: 10 });
+        let prevMessages = await message.channel.messages.fetch({ limit: 15 });
         prevMessages = prevMessages.filter(msg => msg.author.id === client.user.id || msg.author.id === message.author.id);
         prevMessages.reverse();
 
@@ -94,7 +94,7 @@ client.on('messageCreate', async (message) => {
         const chatCompletion = await openai.chat.completions.create({
             model: 'gpt-4o-2024-11-20',
             messages: conversationLog,
-            max_completion_tokens: 1500,
+            max_completion_tokens: 2000,
         });
 
         const response = chatCompletion.choices[0].message.content;
