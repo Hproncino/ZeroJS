@@ -9,3 +9,6 @@ discloud/import/1740165857917/discloud.config
 .vs/ZeroJS/CopilotIndices/17.13.441.19478/CodeChunks.db
 .vs/ZeroJS/CopilotIndices/17.13.441.19478/SemanticSymbols.db
 .vs/ZeroJS/v17/DocumentLayout.json
+.idea/
+index.js
+test.js
