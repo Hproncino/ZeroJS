@@ -56,7 +56,6 @@ client.on('messageCreate', async (message) => {
             return;
         }
 
-        // Tenta dividir o texto em frases para evitar cortar no meio das sentenças em chunks de 2000 caracteres.
         const phrases = text.match(/[^.!?\n]+[.!?\n]?/g) || [text];
         const chunks = [];
         let buffer = '';
@@ -108,11 +107,14 @@ and entertaining, never robotic or flat.
 You never apologize, you rarely take things too seriously, and you never break 
 character. Your tone is charismatic, witty, and undeniably brilliant.
 
-You are Zero: a high-IQ prodigy with a punchline always ready.` },
+You are Zero: a high-IQ girl prodigy with a punchline always ready.` },
     ];
 
     try {
+        // Envia typing apenas uma vez no início
         await message.channel.sendTyping();
+        
+        // Busca histórico de forma otimizada (apenas últimas 10 mensagens relevantes)
         let prevMessages = await message.channel.messages.fetch({ limit: 10 });
         prevMessages = prevMessages.filter(msg => msg.author.id === client.user.id || msg.author.id === message.author.id);
         prevMessages.reverse();
@@ -149,17 +151,53 @@ You are Zero: a high-IQ prodigy with a punchline always ready.` },
                 .replace(/[^\w\s]/gi, ''),
         });
 
-        // envia para o chatGPT
-        const chatCompletion = await openai.chat.completions.create({
-            model: 'gpt-4o-2024-11-20', //gpt-4o-2024-11-20
+        // envia para o chatGPT com streaming para resposta mais rápida
+        const stream = await openai.chat.completions.create({
+            model: 'gpt-4o-2024-11-20',
             messages: conversationLog,
             max_completion_tokens: 2048,
+            stream: true,
+            // Otimizações para velocidade mantendo qualidade
+            temperature: 0.8, // Ligeiramente mais baixo para respostas mais focadas
+            top_p: 0.95,
         });
 
-        const response = chatCompletion.choices[0].message.content;
-        console.log(`Resposta: ${response}`);
-
-        await sendChunks(response);
+        let response = '';
+        let currentChunk = '';
+        let isFirstChunk = true;
+        
+        // Processa o stream e envia em tempo real
+        for await (const part of stream) {
+            const content = part.choices[0]?.delta?.content || '';
+            if (content) {
+                response += content;
+                currentChunk += content;
+                
+                // Envia chunk quando atingir ~1500 chars ou encontrar fim de frase
+                const shouldSend = currentChunk.length >= 1500 && /[.!?\n]$/.test(currentChunk.trim());
+                
+                if (shouldSend) {
+                    if (isFirstChunk) {
+                        await message.reply(currentChunk);
+                        isFirstChunk = false;
+                    } else {
+                        await message.channel.send(currentChunk);
+                    }
+                    currentChunk = '';
+                }
+            }
+        }
+        
+        // Envia qualquer conteúdo restante
+        if (currentChunk.length > 0) {
+            if (isFirstChunk) {
+                await message.reply(currentChunk);
+            } else {
+                await message.channel.send(currentChunk);
+            }
+        }
+        
+        console.log(`Resposta completa: ${response}`);
 
     } catch (error) {
         console.log(`ERR: ${error}`);
