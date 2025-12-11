@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { Client, GatewayIntentBits, ActivityType } from 'discord.js';
+import { Client, GatewayIntentBits, ActivityType, Partials } from 'discord.js';
 import { OpenAI } from 'openai';
 import { pickFirstAudioAttachment, transcribeAttachment } from './voiceToText.js';
 
@@ -7,8 +7,10 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ]
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.DirectMessages,
+    ],
+    partials: [Partials.Channel],
 });
 
 let status = [
@@ -36,7 +38,8 @@ const openai = new OpenAI({
 
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
-    if (message.channel.id !== process.env.CHANNEL_ID) return;
+    const isDM = !message.guild;
+    if (!isDM && message.channel.id !== process.env.CHANNEL_ID) return;
     if (message.content.startsWith('!')) return;
 
     // se houver uma mensagem de audio, roda a transcrição
