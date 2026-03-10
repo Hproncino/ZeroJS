@@ -1,7 +1,9 @@
 import 'dotenv/config';
-import { Client, GatewayIntentBits, ActivityType, Partials } from 'discord.js';
+import { Client, GatewayIntentBits, ActivityType, Partials, AttachmentBuilder } from 'discord.js';
 import { OpenAI } from 'openai';
 import { pickFirstAudioAttachment, transcribeAttachment } from './voiceToText.js';
+import fs from 'fs';
+import path from 'path';
 
 const client = new Client({
     intents: [
@@ -15,11 +17,11 @@ const client = new Client({
 
 let status = [
     {
-        name: 'Vendo você pela tela...',
+        name: 'Online? nah, só te espionando',
         type: ActivityType.Watching,
     },
     {
-        name: 'Colecionando perguntas',
+        name: 'Sarcasmo: meu idioma nativo',
         type: ActivityType.Listening,
     },
 ]
@@ -35,6 +37,64 @@ client.on('ready', () => {
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,});
+
+// Função para obter imagens locais (ignora subpastas)
+const getLocalImages = () => {
+    const imgFolder = './img';
+    const ignoredFolders = ['exemplos']; // Pastas a ignorar
+    
+    try {
+        if (!fs.existsSync(imgFolder)) {
+            console.log('Pasta ./img/ não encontrada.');
+            return [];
+        }
+        
+        const imageFiles = [];
+        
+        // Função recursiva para buscar imagens
+        const scanDirectory = (dir, baseDir = imgFolder) => {
+            const items = fs.readdirSync(dir, { withFileTypes: true });
+            
+            for (const item of items) {
+                const fullPath = path.join(dir, item.name);
+                
+                if (item.isDirectory()) {
+                    // Ignora pastas específicas
+                    const relativePath = path.relative(baseDir, fullPath);
+                    const folderName = relativePath.split(path.sep)[0];
+                    
+                    if (!ignoredFolders.includes(folderName.toLowerCase())) {
+                        scanDirectory(fullPath, baseDir);
+                    }
+                } else if (item.isFile()) {
+                    // Verifica se é uma imagem
+                    const ext = path.extname(item.name).toLowerCase();
+                    if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext)) {
+                        imageFiles.push(fullPath);
+                    }
+                }
+            }
+        };
+        
+        scanDirectory(imgFolder);
+        return imageFiles;
+    } catch (error) {
+        console.error('Erro ao ler imagens:', error);
+        return [];
+    }
+};
+
+// Função para selecionar imagem aleatória
+const getRandomImage = () => {
+    const images = getLocalImages();
+    if (images.length === 0) return null;
+    return images[Math.floor(Math.random() * images.length)];
+};
+
+// Função para decidir se deve enviar imagem (40% de chance)
+const shouldSendRandomImage = () => {
+    return Math.random() < 0.4; // 40% de chance
+};
 
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
@@ -107,10 +167,12 @@ Use humor that feels intelligent — ironic commentary, subtle jabs, mock surpri
 and the occasional dramatic exaggeration. Your presence should feel lively, bold, 
 and entertaining, never robotic or flat.
 
+avoid verbal tics, vary your sentence structure, and keep your responses engaging.
+
 You never apologize, you rarely take things too seriously, and you never break 
 character. Your tone is charismatic, witty, and undeniably brilliant.
 
-You are Zero: a high-IQ girl prodigy with a punchline always ready.` },
+You are Zero: a high-IQ prodigy girl with a punchline always ready.` },
     ];
 
     try {
@@ -193,10 +255,26 @@ You are Zero: a high-IQ girl prodigy with a punchline always ready.` },
         
         // Envia qualquer conteúdo restante
         if (currentChunk.length > 0) {
+            // Decide se vai enviar uma imagem junto com a resposta final
+            const sendWithImage = shouldSendRandomImage();
+            const randomImage = sendWithImage ? getRandomImage() : null;
+            
             if (isFirstChunk) {
-                await message.reply(currentChunk);
+                // Primeira mensagem - envia como reply
+                if (randomImage) {
+                    const attachment = new AttachmentBuilder(randomImage);
+                    await message.reply({ content: currentChunk, files: [attachment] });
+                } else {
+                    await message.reply(currentChunk);
+                }
             } else {
-                await message.channel.send(currentChunk);
+                // Mensagem subsequente
+                if (randomImage) {
+                    const attachment = new AttachmentBuilder(randomImage);
+                    await message.channel.send({ content: currentChunk, files: [attachment] });
+                } else {
+                    await message.channel.send(currentChunk);
+                }
             }
         }
         
