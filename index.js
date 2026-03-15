@@ -1,9 +1,13 @@
-import 'dotenv/config';
-import { Client, GatewayIntentBits, ActivityType, Partials, AttachmentBuilder } from 'discord.js';
+import dotenv from 'dotenv';
+import { Client, GatewayIntentBits, ActivityType, Partials, AttachmentBuilder, REST, Routes, MessageFlags } from 'discord.js';
 import { OpenAI } from 'openai';
 import { pickFirstAudioAttachment, transcribeAttachment } from './voiceToText.js';
 import fs from 'fs';
 import path from 'path';
+import { isRegistered } from './users.js';
+import * as ativar from './commands/ativar.js';
+
+dotenv.config({ override: true });
 
 const client = new Client({
     intents: [
@@ -26,13 +30,43 @@ let status = [
     },
 ]
     
-client.on('ready', () => {
+client.once('ready', async () => {
     console.log('O bot está online');
 
     setInterval(() => {
         let random = Math.floor(Math.random() * status.length);
         client.user.setActivity(status[random]);
     }, 10000);
+
+    const rest = new REST().setToken(process.env.TOKEN);
+    try {
+        await rest.put(
+            Routes.applicationCommands(client.application.id),
+            { body: [ativar.data.toJSON()] }
+        );
+        console.log('Slash command /ativar registrado com sucesso.');
+    } catch (error) {
+        console.error('Erro ao registrar slash command:', error);
+    }
+});
+
+client.on('error', (error) => {
+    console.error('Erro no cliente do Discord:', error);
+});
+
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isChatInputCommand() || interaction.commandName !== 'ativar') return;
+    try {
+        await ativar.execute(interaction);
+    } catch (error) {
+        console.error('Erro ao processar /ativar:', error);
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({
+                content: 'Não consegui acessar o banco agora. Tenta novamente em instantes.',
+                flags: MessageFlags.Ephemeral,
+            });
+        }
+    }
 });
 
 const openai = new OpenAI({
@@ -102,6 +136,25 @@ client.on('messageCreate', async (message) => {
     const isDM = !message.guild;
     if (!isDM && message.channel.id !== process.env.CHANNEL_ID) return;
     if (message.content.startsWith('!')) return;
+
+    // Portão de registro: bloqueia DMs de usuários não confirmados
+    if (isDM) {
+        let registered = false;
+        try {
+            registered = await isRegistered(message.author.id);
+        } catch (error) {
+            console.error('Erro ao consultar registro no MongoDB:', error);
+            await message.reply('Meu banco de dados está indisponível agora. Tenta novamente em alguns minutos.');
+            return;
+        }
+
+        if (!registered) {
+            await message.reply(
+                'Ei, espera — você ainda não me ativou.\nUsa o comando **/ativar** em algum servidor que eu esteja para liberar acesso à minha DM.\n*...Não é tão difícil assim, né?*'
+            );
+            return;
+        }
+    }
 
     // se houver uma mensagem de audio, roda a transcrição
     const audioAttachment = pickFirstAudioAttachment(message.attachments);
