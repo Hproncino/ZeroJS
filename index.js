@@ -97,6 +97,7 @@ const shouldSendRandomImage = () => {
 };
 
 client.on('messageCreate', async (message) => {
+    if (message.system) return;
     if (message.author.bot) return;
     const isDM = !message.guild;
     if (!isDM && message.channel.id !== process.env.CHANNEL_ID) return;
@@ -185,6 +186,7 @@ You are Zero: a high-IQ prodigy girl with a punchline always ready.` },
         prevMessages.reverse();
 
         prevMessages.forEach((msg) => {
+            if (msg.system) return;
             if (msg.content.startsWith('!')) return;
             if (msg.author.id !== client.user.id && msg.author.bot) return;
             if (msg.author.id == client.user.id) {
