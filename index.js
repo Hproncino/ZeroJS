@@ -167,6 +167,26 @@ client.on('messageCreate', async (message) => {
         }
     }
 
+    let hasSentFirstResponse = false;
+
+    const sendResponseChunk = async (content, files = []) => {
+        if (!hasSentFirstResponse) {
+            if (files.length > 0) {
+                await message.reply({ content, files });
+            } else {
+                await message.reply(content);
+            }
+            hasSentFirstResponse = true;
+            return;
+        }
+
+        if (files.length > 0) {
+            await message.channel.send({ content, files });
+        } else {
+            await message.channel.send(content);
+        }
+    };
+
     const sendChunks = async (text) => {
         if (typeof text !== 'string') {
             console.error('Texto provido não é do tipo string.');
@@ -194,13 +214,9 @@ client.on('messageCreate', async (message) => {
         }
         if (buffer.length > 0) chunks.push(buffer);
 
-        // Envia o primeiro chunk como resposta, os outros como mensagens normais
+        // Usa a mesma regra global: primeira resposta vira reply, restante vira send.
         for (let i = 0; i < chunks.length; i++) {
-            if (i === 0) {
-                await message.reply(chunks[i]);
-            } else {
-                await message.channel.send(chunks[i]);
-            }
+            await sendResponseChunk(chunks[i]);
         }
     };
 
@@ -284,7 +300,6 @@ You are Zero: a high-IQ prodigy girl with a punchline always ready.` },
 
         let response = '';
         let currentChunk = '';
-        let isFirstChunk = true;
         
         // Processa o stream e envia em tempo real
         for await (const part of stream) {
@@ -297,12 +312,7 @@ You are Zero: a high-IQ prodigy girl with a punchline always ready.` },
                 const shouldSend = currentChunk.length >= 1500 && /[.!?\n]$/.test(currentChunk.trim());
                 
                 if (shouldSend) {
-                    if (isFirstChunk) {
-                        await message.reply(currentChunk);
-                        isFirstChunk = false;
-                    } else {
-                        await message.channel.send(currentChunk);
-                    }
+                    await sendResponseChunk(currentChunk);
                     currentChunk = '';
                 }
             }
@@ -313,23 +323,12 @@ You are Zero: a high-IQ prodigy girl with a punchline always ready.` },
             // Decide se vai enviar uma imagem junto com a resposta final
             const sendWithImage = shouldSendRandomImage();
             const randomImage = sendWithImage ? getRandomImage() : null;
-            
-            if (isFirstChunk) {
-                // Primeira mensagem - envia como reply
-                if (randomImage) {
-                    const attachment = new AttachmentBuilder(randomImage);
-                    await message.reply({ content: currentChunk, files: [attachment] });
-                } else {
-                    await message.reply(currentChunk);
-                }
+
+            if (randomImage) {
+                const attachment = new AttachmentBuilder(randomImage);
+                await sendResponseChunk(currentChunk, [attachment]);
             } else {
-                // Mensagem subsequente
-                if (randomImage) {
-                    const attachment = new AttachmentBuilder(randomImage);
-                    await message.channel.send({ content: currentChunk, files: [attachment] });
-                } else {
-                    await message.channel.send(currentChunk);
-                }
+                await sendResponseChunk(currentChunk);
             }
         }
         
