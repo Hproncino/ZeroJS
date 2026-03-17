@@ -1,28 +1,41 @@
-# INTEGRAÇÃO DE CHATBOT DE TEXTO NO APP DISCORD
+# ZeroJS
 
-Este projeto tem como objetivo demonstrar a integração da API do ChatGPT utilizando Node.js e JavaScript. Através desta implementação, conseguimos dar vida a um conceito que vinha sendo idealizado há algum tempo.
+ZeroJS é um bot de Discord em Node.js com integração à OpenAI para conversas inteligentes, respostas em tempo real e suporte a transcrição de áudio.
 
-Tecnologias Utilizadas
-- Node.js: Plataforma de desenvolvimento que permite a execução de código JavaScript no lado do servidor.
-- JavaScript: Linguagem de programação utilizada para desenvolver a lógica de integração com a API do ChatGPT.
-- API do ChatGPT: Interface de programação de aplicações fornecida pela OpenAI que permite a interação com o modelo de linguagem GPT-4o.
+## Tecnologias utilizadas
 
-## Funcionalidades ##
-- Integração com a API do ChatGPT para realizar consultas e obter respostas inteligentes.
-Estrutura modular que facilita a manutenção do projeto.
+- Node.js
+- JavaScript (ES Modules)
+- discord.js
+- OpenAI API (chat e transcrição)
+- MongoDB
+- dotenv
 
-- Implementação de atividade customizada para discord.
+## Principais funcionalidades
 
-- Separação de mensagens em chunks, já que o discord permite no máximo 2000 caracteres gerados por bots.
+- Integração com OpenAI para respostas inteligentes.
+- Respostas em streaming para reduzir latência percebida.
+- Controle automático de mensagens longas (quebra em blocos para respeitar o limite de 2000 caracteres do Discord).
+- Janela de contexto com até 10 mensagens anteriores para manter continuidade da conversa.
+- Filtro de mensagens para ignorar bots, mensagens de sistema e comandos com prefixo `!`.
+- Presença dinâmica no Discord com rotação de status.
 
-- Possui Log de até 10 mensagens anteriores para otimizar o gasto com a API.
+## Novas features implementadas
 
-Contato
-Para mais informações, entre em contato através do e-mail: Pimentel2henry@gmail.com
+- Transcrição automática de áudio anexado usando Whisper.
+- Liberação de DM apenas para usuários registrados.
+- Slash Command de ativação para liberar o acesso em mensagens diretas.
+- Registro de usuários ativados em MongoDB.
+- Envio opcional de imagem aleatória local junto à resposta final.
 
-Abaixo estão alguns exemplos de sua execução.
+## Observações
 
-![alt text](/img/exemplos/image.png)
+- Em servidor, o bot responde somente no canal definido por `CHANNEL_ID`.
+- Em DM, apenas usuários ativados conseguem conversar com o bot.
 
-![image](https://github.com/user-attachments/assets/5330edd2-1507-4119-b089-aaeafcc29954)
+## Exemplos
+
+![Exemplo 1](/img/exemplos/image.png)
+
+![Exemplo 2](https://github.com/user-attachments/assets/5330edd2-1507-4119-b089-aaeafcc29954)
 
