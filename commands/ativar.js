@@ -2,7 +2,7 @@ import { MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { isRegistered, saveUser } from '../users.js';
 
 export const data = new SlashCommandBuilder()
-    .setName('ativar')
+    .setName('ativar-dm')
     .setDescription('Ativa a Zero na sua DM para que ela possa te responder.');
 
 export const execute = async (interaction) => {
@@ -21,7 +21,7 @@ export const execute = async (interaction) => {
     try {
         await user.send('Pronto. Você está ativado agora. Pode falar comigo aqui quando quiser. *...Não demorou tanto assim, né?*');
     } catch {
-        // DMs bloqueadas pelo usuário — o registro ainda é confirmado
+        
     }
 
     await interaction.reply({

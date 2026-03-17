@@ -143,8 +143,8 @@ client.on('messageCreate', async (message) => {
         try {
             registered = await isRegistered(message.author.id);
         } catch (error) {
-            console.error('Erro ao consultar registro no MongoDB:', error);
-            await message.reply('Meu banco de dados está indisponível agora. Tenta novamente em alguns minutos.');
+            console.error('Erro ao consultar registros no MongoDB:', error);
+            await message.reply('Meu banco de dados está indisponível agora. Tente novamente em alguns minutos.');
             return;
         }
 
@@ -249,7 +249,7 @@ You are Zero: a high-IQ prodigy girl with a punchline always ready.` },
         // Envia typing apenas uma vez no início
         await message.channel.sendTyping();
         
-        // Busca histórico de forma otimizada (apenas últimas 10 mensagens relevantes)
+        // contexto de 10 mensagens anteriores
         let prevMessages = await message.channel.messages.fetch({ limit: 10 });
         prevMessages = prevMessages.filter(msg => msg.author.id === client.user.id || msg.author.id === message.author.id);
         prevMessages.reverse();
@@ -287,7 +287,6 @@ You are Zero: a high-IQ prodigy girl with a punchline always ready.` },
                 .replace(/[^\w\s]/gi, ''),
         });
 
-        // envia para o chatGPT com streaming para resposta mais rápida
         const stream = await openai.chat.completions.create({
             model: 'gpt-4o-2024-11-20',
             messages: conversationLog,
