@@ -55,7 +55,7 @@ client.on('error', (error) => {
 });
 
 client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isChatInputCommand() || interaction.commandName !== 'ativar') return;
+    if (!interaction.isChatInputCommand() || interaction.commandName !== ativar.data.name) return;
     try {
         await ativar.execute(interaction);
     } catch (error) {
