@@ -75,7 +75,7 @@ export const createConnectionManager = (client, options) => {
         if (handlersRegistered) return;
         handlersRegistered = true;
 
-        client.on('ready', () => {
+        client.on('clientReady', () => {
             reconnectAttempts = 0;
             startHealthcheck();
         });

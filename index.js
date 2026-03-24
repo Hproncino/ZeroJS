@@ -41,7 +41,7 @@ let status = [
     },
 ]
     
-client.once('ready', async () => {
+client.once('clientReady', async () => {
     console.log('O bot está online');
 
     setInterval(() => {
