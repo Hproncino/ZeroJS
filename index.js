@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { isRegistered } from './users.js';
 import * as ativar from './commands/ativar.js';
+import { createConnectionManager } from './connectionManager.js';
 
 dotenv.config({ override: true });
 
@@ -18,6 +19,16 @@ const client = new Client({
     ],
     partials: [Partials.Channel],
 });
+
+const connectionManager = createConnectionManager(client, {
+    token: process.env.TOKEN,
+    maxReconnectAttempts: 8,
+    baseReconnectDelayMs: 2000,
+    maxReconnectDelayMs: 30000,
+    healthcheckIntervalMs: 30000,
+});
+
+connectionManager.registerClientHandlers();
 
 let status = [
     {
@@ -48,10 +59,6 @@ client.once('ready', async () => {
     } catch (error) {
         console.error('Erro ao registrar slash command:', error);
     }
-});
-
-client.on('error', (error) => {
-    console.error('Erro no cliente do Discord:', error);
 });
 
 client.on('interactionCreate', async (interaction) => {
@@ -338,4 +345,32 @@ You are Zero: a high-IQ prodigy girl with a punchline always ready.` },
     }
 });
 
-client.login(process.env.TOKEN);
+process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled Promise Rejection:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+    if (connectionManager.isManualShutdown()) return;
+    process.exit(1);
+});
+
+let shutdownInProgress = false;
+
+const gracefulShutdown = async (signal) => {
+    if (shutdownInProgress) return;
+
+    shutdownInProgress = true;
+    await connectionManager.shutdown(`manual via ${signal}`);
+    process.exit(0);
+};
+
+process.on('SIGINT', () => {
+    gracefulShutdown('SIGINT');
+});
+
+process.on('SIGTERM', () => {
+    gracefulShutdown('SIGTERM');
+});
+
+connectionManager.start();
