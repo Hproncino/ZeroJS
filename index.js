@@ -355,22 +355,33 @@ process.on('uncaughtException', (error) => {
     process.exit(1);
 });
 
-let shutdownInProgress = false;
+let shutdownPromise = null;
 
-const gracefulShutdown = async (signal) => {
-    if (shutdownInProgress) return;
+const gracefulShutdown = (signal) => {
+    if (shutdownPromise) {
+        return shutdownPromise;
+    }
 
-    shutdownInProgress = true;
-    await connectionManager.shutdown(`manual via ${signal}`);
-    process.exit(0);
+    shutdownPromise = (async () => {
+        await connectionManager.shutdown(`manual via ${signal}`);
+        process.exit(0);
+    })();
+
+    return shutdownPromise;
 };
 
 process.on('SIGINT', () => {
-    gracefulShutdown('SIGINT');
+    gracefulShutdown('SIGINT').catch((err) => {
+        console.error('Error during graceful shutdown (SIGINT):', err);
+        process.exit(1);
+    });
 });
 
 process.on('SIGTERM', () => {
-    gracefulShutdown('SIGTERM');
+    gracefulShutdown('SIGTERM').catch((err) => {
+        console.error('Error during graceful shutdown (SIGTERM):', err);
+        process.exit(1);
+    });
 });
 
 connectionManager.start();

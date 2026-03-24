@@ -55,8 +55,8 @@ export const createConnectionManager = (client, options) => {
                 return;
             }
 
-            // Reinicia processo em vez de relogar no mesmo Client para evitar acúmulo de listeners internos do shard.
-            console.error('Cliente segue offline após janela de reconexão. Reiniciando processo...');
+            // Reinicia processo em vez de relogar no mesmo Client para evitar acumulo de listeners internos do shard.
+            console.error('Cliente segue offline apos janela de reconexao. Reiniciando processo...');
             process.exit(1);
         }, delay);
     };
@@ -86,7 +86,7 @@ export const createConnectionManager = (client, options) => {
         });
 
         client.on('shardDisconnect', (event, shardId) => {
-            console.warn(`Shard ${shardId} desconectada. Código: ${event?.code ?? 'n/a'}`);
+            console.warn(`Shard ${shardId} desconectada. Codigo: ${event?.code ?? 'n/a'}`);
             scheduleReconnect('shardDisconnect');
         });
 
@@ -97,7 +97,7 @@ export const createConnectionManager = (client, options) => {
 
         client.on('invalidated', () => {
             if (isShuttingDown) return;
-            console.error('Sessão invalidada pelo Discord. Reiniciando processo para recuperar sessão limpa...');
+            console.error('Sessao invalidada pelo Discord. Reiniciando processo para recuperar sessao limpa...');
             process.exit(1);
         });
     };
@@ -122,7 +122,7 @@ export const createConnectionManager = (client, options) => {
         if (isShuttingDown) return;
 
         isShuttingDown = true;
-        console.log(`Encerrando bot (${reason}) sem forçar reconexão...`);
+        console.log(`Encerrando bot (${reason}) sem forcar reconexao...`);
 
         clearReconnectTimeout();
         stopHealthcheck();
