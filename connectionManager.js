@@ -10,8 +10,9 @@ export const createConnectionManager = (client, options) => {
     let reconnectAttempts = 0;
     let reconnectTimeout = null;
     let healthcheckInterval = null;
-    let isRelogging = false;
     let isShuttingDown = false;
+    let handlersRegistered = false;
+    let startPromise = null;
 
     const getReconnectDelay = (attempt) => {
         const delay = baseReconnectDelayMs * (2 ** Math.max(0, attempt - 1));
@@ -33,7 +34,7 @@ export const createConnectionManager = (client, options) => {
     };
 
     const scheduleReconnect = (reason = 'desconhecido') => {
-        if (isShuttingDown || reconnectTimeout || isRelogging) return;
+        if (isShuttingDown || reconnectTimeout) return;
 
         reconnectAttempts += 1;
         const delay = getReconnectDelay(reconnectAttempts);
@@ -54,23 +55,9 @@ export const createConnectionManager = (client, options) => {
                 return;
             }
 
-            isRelogging = true;
-            try {
-                try {
-                    await client.destroy();
-                } catch {
-                    // Ignora erro de destroy se o cliente já estiver desconectado.
-                }
-
-                await client.login(token);
-                console.log('Reconexão realizada com sucesso.');
-                reconnectAttempts = 0;
-            } catch (error) {
-                console.error('Falha ao reconectar:', error);
-                scheduleReconnect('falha no login');
-            } finally {
-                isRelogging = false;
-            }
+            // Reinicia processo em vez de relogar no mesmo Client para evitar acúmulo de listeners internos do shard.
+            console.error('Cliente segue offline após janela de reconexão. Reiniciando processo...');
+            process.exit(1);
         }, delay);
     };
 
@@ -85,6 +72,9 @@ export const createConnectionManager = (client, options) => {
     };
 
     const registerClientHandlers = () => {
+        if (handlersRegistered) return;
+        handlersRegistered = true;
+
         client.on('ready', () => {
             reconnectAttempts = 0;
             startHealthcheck();
@@ -114,13 +104,18 @@ export const createConnectionManager = (client, options) => {
 
     const start = async () => {
         if (isShuttingDown) return;
+        if (startPromise) return startPromise;
 
-        try {
-            await client.login(token);
-        } catch (error) {
-            console.error('Falha ao iniciar o bot:', error);
-            scheduleReconnect('falha no startup');
-        }
+        startPromise = (async () => {
+            try {
+                await client.login(token);
+            } catch (error) {
+                console.error('Falha ao iniciar o bot:', error);
+                scheduleReconnect('falha no startup');
+            }
+        })();
+
+        return startPromise;
     };
 
     const shutdown = async (reason = 'manual') => {
