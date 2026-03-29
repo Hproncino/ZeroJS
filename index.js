@@ -5,6 +5,7 @@ import { pickFirstAudioAttachment, transcribeAttachment } from './voiceToText.js
 import fs from 'fs';
 import path from 'path';
 import { isRegistered } from './users.js';
+import { getUserMemorySystemMessage, persistUserMemoryFromConversation } from './userMemoryService.js';
 import * as ativar from './commands/ativar.js';
 import { createConnectionManager } from './connectionManager.js';
 
@@ -255,6 +256,15 @@ You are Zero: a high-IQ prodigy girl with a punchline always ready.` },
     try {
         // Envia typing apenas uma vez no início
         await message.channel.sendTyping();
+
+        try {
+            const memoryPrompt = await getUserMemorySystemMessage(message.author.id);
+            if (memoryPrompt) {
+                conversationLog.push({ role: 'system', content: memoryPrompt });
+            }
+        } catch (memoryError) {
+            console.error('Falha ao carregar memoria do usuario:', memoryError);
+        }
         
         // contexto de 10 mensagens anteriores
         let prevMessages = await message.channel.messages.fetch({ limit: 10 });
@@ -339,6 +349,19 @@ You are Zero: a high-IQ prodigy girl with a punchline always ready.` },
         }
         
         console.log(`Resposta completa: ${response}`);
+
+        // Atualiza memoria do usuario em segundo plano sem quebrar resposta principal.
+        try {
+            await persistUserMemoryFromConversation(
+                openai,
+                message.author.id,
+                message.author.username,
+                userContent,
+                response
+            );
+        } catch (memoryPersistError) {
+            console.error('Falha ao atualizar memoria do usuario:', memoryPersistError);
+        }
 
     } catch (error) {
         console.log(`ERR: ${error}`);
