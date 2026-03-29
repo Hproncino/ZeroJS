@@ -4,8 +4,11 @@ import { OpenAI } from 'openai';
 import { pickFirstAudioAttachment, transcribeAttachment } from './voiceToText.js';
 import fs from 'fs';
 import path from 'path';
-import { isRegistered } from './users.js';
-import { getUserMemorySystemMessage, persistUserMemoryFromConversation } from './userMemoryService.js';
+import { isRegistered, shouldPersistUserMemory } from './users.js';
+import {
+    getUserMemorySystemMessage,
+    persistUserMemoryFromConversation,
+} from './userMemoryService.js';
 import * as ativar from './commands/ativar.js';
 import { createConnectionManager } from './connectionManager.js';
 
@@ -257,18 +260,24 @@ You are Zero: a high-IQ prodigy girl with a punchline always ready.` },
         // Envia typing apenas uma vez no início
         await message.channel.sendTyping();
 
-        try {
-            const memoryPrompt = await getUserMemorySystemMessage(message.author.id);
-            if (memoryPrompt) {
-                conversationLog.push({ role: 'system', content: memoryPrompt });
-            }
-        } catch (memoryError) {
+        // Carrega memoria e contexto de mensagens em paralelo para reduzir latencia.
+        const prevMessagesPromise = message.channel.messages.fetch({ limit: 10 });
+        const memoryPromptPromise = getUserMemorySystemMessage(message.author.id).catch((memoryError) => {
             console.error('Falha ao carregar memoria do usuario:', memoryError);
+            return '';
+        });
+
+        const [prevMessagesRaw, memoryPrompt] = await Promise.all([
+            prevMessagesPromise,
+            memoryPromptPromise,
+        ]);
+
+        if (memoryPrompt) {
+            conversationLog.push({ role: 'system', content: memoryPrompt });
         }
-        
+
         // contexto de 10 mensagens anteriores
-        let prevMessages = await message.channel.messages.fetch({ limit: 10 });
-        prevMessages = prevMessages.filter(msg => msg.author.id === client.user.id || msg.author.id === message.author.id);
+        let prevMessages = prevMessagesRaw.filter(msg => msg.author.id === client.user.id || msg.author.id === message.author.id);
         prevMessages.reverse();
 
         prevMessages.forEach((msg) => {
@@ -350,15 +359,23 @@ You are Zero: a high-IQ prodigy girl with a punchline always ready.` },
         
         console.log(`Resposta completa: ${response}`);
 
-        // Atualiza memoria do usuario em segundo plano sem quebrar resposta principal.
+        // Atualiza memoria apenas a cada 3 mensagens por usuario.
         try {
-            await persistUserMemoryFromConversation(
-                openai,
+            const shouldPersistMemory = await shouldPersistUserMemory(
                 message.author.id,
                 message.author.username,
-                userContent,
-                response
+                3
             );
+
+            if (shouldPersistMemory) {
+                await persistUserMemoryFromConversation(
+                    openai,
+                    message.author.id,
+                    message.author.username,
+                    userContent,
+                    response
+                );
+            }
         } catch (memoryPersistError) {
             console.error('Falha ao atualizar memoria do usuario:', memoryPersistError);
         }

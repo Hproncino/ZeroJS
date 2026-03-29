@@ -145,3 +145,26 @@ export const saveUserMemoryInsights = async (id, username, insights) => {
         { upsert: true }
     );
 };
+
+export const shouldPersistUserMemory = async (id, username, frequency = 3) => {
+    const col = await getCollection();
+
+    const result = await col.findOneAndUpdate(
+        { id },
+        {
+            $inc: { memoryMessageCounter: 1 },
+            $set: { id, username },
+            $setOnInsert: { registeredAt: new Date().toISOString() },
+        },
+        {
+            upsert: true,
+            returnDocument: 'after',
+            projection: { memoryMessageCounter: 1 },
+        }
+    );
+
+    const counter = Number(result.value?.memoryMessageCounter || 0);
+    const safeFrequency = Math.max(1, Number(frequency) || 3);
+
+    return counter > 0 && counter % safeFrequency === 0;
+};
