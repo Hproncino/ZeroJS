@@ -367,7 +367,10 @@ You are Zero: a high-IQ prodigy girl with a punchline always ready.` },
                 3
             );
 
+            console.log(`[Memory] Contador para ${message.author.username}: shouldPersist=${shouldPersistMemory}`);
+
             if (shouldPersistMemory) {
+                console.log(`[Memory] Persistindo memória para ${message.author.username}...`);
                 await persistUserMemoryFromConversation(
                     openai,
                     message.author.id,

@@ -163,8 +163,13 @@ export const shouldPersistUserMemory = async (id, username, frequency = 3) => {
         }
     );
 
-    const counter = Number(result.value?.memoryMessageCounter || 0);
+    // MongoDB driver compatibility: some versions return the document directly,
+    // others wrap it in { value }.
+    const updatedDoc = result?.value ?? result;
+    const counter = Number(updatedDoc?.memoryMessageCounter || 0);
     const safeFrequency = Math.max(1, Number(frequency) || 3);
+
+    console.log(`[Memory] Counter user=${id} value=${counter} freq=${safeFrequency}`);
 
     return counter > 0 && counter % safeFrequency === 0;
 };

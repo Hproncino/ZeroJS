@@ -82,8 +82,23 @@ export const persistUserMemoryFromConversation = async (
     userInput,
     assistantOutput
 ) => {
-    const insights = await extractUserMemoryInsights(openaiClient, userInput, assistantOutput);
-    if (!insights) return;
+    try {
+        console.log(`[Memory] Iniciando extração de insights para usuário ${userId}...`);
+        
+        const insights = await extractUserMemoryInsights(openaiClient, userInput, assistantOutput);
+        
+        if (!insights) {
+            console.warn(`[Memory] Nenhum insight extraído para usuário ${userId}`);
+            return;
+        }
 
-    await saveUserMemoryInsights(userId, username, insights);
+        console.log(`[Memory] Insights extraídos:`, insights);
+        
+        await saveUserMemoryInsights(userId, username, insights);
+        
+        console.log(`[Memory] Memória salva com sucesso para usuário ${userId}`);
+    } catch (error) {
+        console.error(`[Memory] Erro ao persistir memória do usuário ${userId}:`, error);
+        throw error;
+    }
 };
