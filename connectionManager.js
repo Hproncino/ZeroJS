@@ -1,3 +1,5 @@
+import { Events } from 'discord.js';
+
 export const createConnectionManager = (client, options) => {
     const {
         token,
@@ -75,7 +77,7 @@ export const createConnectionManager = (client, options) => {
         if (handlersRegistered) return;
         handlersRegistered = true;
 
-        client.on('clientReady', () => {
+        client.on(Events.ClientReady, () => {
             reconnectAttempts = 0;
             startHealthcheck();
         });

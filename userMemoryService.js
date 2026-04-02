@@ -1,4 +1,5 @@
 import { getUserMemory, buildUserMemoryPrompt, saveUserMemoryInsights } from './users.js';
+import { pickRandom } from './utils/pickRandomMsg.js';
 
 const MEMORY_EXTRACTION_SCHEMA = {
     type: 'json_schema',
@@ -46,8 +47,9 @@ export const extractUserMemoryInsights = async (openaiClient, userInput, assista
             {
                 role: 'system',
                 content: [
-                    'Extract stable user memory from the dialogue.',
-                    'Return only high-confidence facts. Ignore temporary details or guesses.',
+                    'Extract user memory from the selected message.',
+                    'Return only high-confidence facts and avoid assumptions.',
+                    'Identify candidate facts, then we will keep only one random memory item.',
                     'Keep output concise and in Portuguese when possible.',
                 ].join(' '),
             },
@@ -64,11 +66,24 @@ export const extractUserMemoryInsights = async (openaiClient, userInput, assista
 
     try {
         const parsed = JSON.parse(content);
+        const traits = toStringArray(parsed.traits);
+        const likes = toStringArray(parsed.likes);
+        const dislikes = toStringArray(parsed.dislikes);
+        const conversationNotes = toStringArray(parsed.conversationNotes);
+
+        const fields = ['traits', 'likes', 'dislikes', 'conversationNotes'];
+        const candidates = fields.flatMap((field) =>
+            toStringArray(parsed[field]).map((value) => ({ field, value }))
+        );
+
+        const randomCandidate = pickRandom(candidates);
+        if (!randomCandidate) return null;
+
         return {
-            traits: toStringArray(parsed.traits),
-            likes: toStringArray(parsed.likes),
-            dislikes: toStringArray(parsed.dislikes),
-            conversationNotes: toStringArray(parsed.conversationNotes),
+            traits: randomCandidate.field === 'traits' ? [randomCandidate.value] : [],
+            likes: randomCandidate.field === 'likes' ? [randomCandidate.value] : [],
+            dislikes: randomCandidate.field === 'dislikes' ? [randomCandidate.value] : [],
+            conversationNotes: randomCandidate.field === 'conversationNotes' ? [randomCandidate.value] : [],
         };
     } catch {
         return null;

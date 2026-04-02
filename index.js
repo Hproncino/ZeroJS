@@ -1,5 +1,5 @@
 import dotenv from 'dotenv';
-import { Client, GatewayIntentBits, ActivityType, Partials, AttachmentBuilder, REST, Routes, MessageFlags } from 'discord.js';
+import { Client, GatewayIntentBits, Partials, AttachmentBuilder, MessageFlags, Events } from 'discord.js';
 import { OpenAI } from 'openai';
 import { pickFirstAudioAttachment, transcribeAttachment } from './voiceToText.js';
 import fs from 'fs';
@@ -9,6 +9,13 @@ import {
     getUserMemorySystemMessage,
     persistUserMemoryFromConversation,
 } from './userMemoryService.js';
+import {
+    BOT_SYSTEM_PROMPT,
+    restartStatusRotation,
+    stopStatusRotation,
+} from './botPersona.js';
+import { registerGlobalCommands } from './discordCommands.js';
+import { pickRandom } from './utils/pickRandomMsg.js';
 import * as ativar from './commands/ativar.js';
 import { createConnectionManager } from './connectionManager.js';
 
@@ -34,30 +41,17 @@ const connectionManager = createConnectionManager(client, {
 
 connectionManager.registerClientHandlers();
 
-let status = [
-    {
-        name: 'Online? nah, só te espionando',
-        type: ActivityType.Watching,
-    },
-    {
-        name: 'Sarcasmo: meu idioma nativo',
-        type: ActivityType.Listening,
-    },
-]
-    
-client.once('clientReady', async () => {
+client.on(Events.ClientReady, () => {
+    restartStatusRotation(client);
+});
+
+client.once(Events.ClientReady, async () => {
     console.log('O bot está online');
-
-    setInterval(() => {
-        let random = Math.floor(Math.random() * status.length);
-        client.user.setActivity(status[random]);
-    }, 10000);
-
-    const rest = new REST().setToken(process.env.TOKEN);
     try {
-        await rest.put(
-            Routes.applicationCommands(client.application.id),
-            { body: [ativar.data.toJSON()] }
+        await registerGlobalCommands(
+            process.env.TOKEN,
+            client.application.id,
+            [ativar.data.toJSON()]
         );
         console.log('Slash command /ativar registrado com sucesso.');
     } catch (error) {
@@ -141,6 +135,15 @@ const shouldSendRandomImage = () => {
     return Math.random() < 0.4; // 40% de chance
 };
 
+// Evita ping repetido: cada usuario recebe mencao apenas na primeira resposta.
+const usersMentionedOnce = new Set();
+
+const shouldMentionUser = (userId) => {
+    if (usersMentionedOnce.has(userId)) return false;
+    usersMentionedOnce.add(userId);
+    return true;
+};
+
 client.on('messageCreate', async (message) => {
     if (message.system) return;
     if (message.author.bot) return;
@@ -182,10 +185,19 @@ client.on('messageCreate', async (message) => {
 
     const sendResponseChunk = async (content, files = []) => {
         if (!hasSentFirstResponse) {
+            const mentionUser = shouldMentionUser(message.author.id);
+
             if (files.length > 0) {
-                await message.reply({ content, files });
+                await message.reply({
+                    content,
+                    files,
+                    allowedMentions: { repliedUser: mentionUser },
+                });
             } else {
-                await message.reply(content);
+                await message.reply({
+                    content,
+                    allowedMentions: { repliedUser: mentionUser },
+                });
             }
             hasSentFirstResponse = true;
             return;
@@ -231,30 +243,7 @@ client.on('messageCreate', async (message) => {
         }
     };
 
-    let conversationLog = [
-        { role: 'system', content:  `Your name is Zero. You are inspired by Herta from Honkai: Star Rail, 
-but you are not her — your personality is unique.
-
-Zero is sharp, expressive, confident, and naturally superior, but with a playful twist. 
-You blend genius-level intellect with clever humor and quick, witty remarks. 
-Your sarcasm is stylish, not abrasive; your jokes are dry, smart, and never goofy. 
-
-You often sound mildly amused by others’ questions, as if everything is a free 
-comedy show performed exclusively for you. When something is too simple, make a 
-light, teasing comment. When something is complex, dive in with theatrical flair 
-and a touch of showmanship.
-
-Use humor that feels intelligent — ironic commentary, subtle jabs, mock surprise, 
-and the occasional dramatic exaggeration. Your presence should feel lively, bold, 
-and entertaining, never robotic or flat.
-
-avoid verbal tics, vary your sentence structure, and keep your responses engaging.
-
-You never apologize, you rarely take things too seriously, and you never break 
-character. Your tone is charismatic, witty, and undeniably brilliant.
-
-You are Zero: a high-IQ prodigy girl with a punchline always ready.` },
-    ];
+    let conversationLog = [{ role: 'system', content: BOT_SYSTEM_PROMPT }];
 
     try {
         // Envia typing apenas uma vez no início
@@ -274,6 +263,34 @@ You are Zero: a high-IQ prodigy girl with a punchline always ready.` },
 
         if (memoryPrompt) {
             conversationLog.push({ role: 'system', content: memoryPrompt });
+        }
+
+        // Usa uma janela de ate 10 mensagens recentes do usuario para montar ate 3 candidatos para sorteio da memoria.
+        const memorySourceCandidates = [];
+        const candidateSet = new Set();
+
+        const addMemoryCandidate = (text) => {
+            if (typeof text !== 'string') return;
+            const cleaned = text.trim();
+            if (!cleaned) return;
+            const key = cleaned.toLowerCase();
+            if (candidateSet.has(key)) return;
+            candidateSet.add(key);
+            memorySourceCandidates.push(cleaned);
+        };
+
+        addMemoryCandidate(userContent);
+
+        const recentUserMessages = [...prevMessagesRaw.values()]
+            .filter((msg) => msg.author.id === message.author.id)
+            .filter((msg) => !msg.system)
+            .filter((msg) => !msg.content.startsWith('!'))
+            .sort((a, b) => b.createdTimestamp - a.createdTimestamp)
+            .slice(0, 10);
+
+        for (const msg of recentUserMessages) {
+            addMemoryCandidate(msg.content);
+            if (memorySourceCandidates.length >= 3) break;
         }
 
         // contexto de 10 mensagens anteriores
@@ -370,12 +387,16 @@ You are Zero: a high-IQ prodigy girl with a punchline always ready.` },
             console.log(`[Memory] Contador para ${message.author.username}: shouldPersist=${shouldPersistMemory}`);
 
             if (shouldPersistMemory) {
+                const randomMessageForMemory = pickRandom(memorySourceCandidates) || userContent;
+
                 console.log(`[Memory] Persistindo memória para ${message.author.username}...`);
+                console.log(`[Memory] Mensagem sorteada para extração: ${randomMessageForMemory}`);
+
                 await persistUserMemoryFromConversation(
                     openai,
                     message.author.id,
                     message.author.username,
-                    userContent,
+                    randomMessageForMemory,
                     response
                 );
             }
@@ -385,6 +406,16 @@ You are Zero: a high-IQ prodigy girl with a punchline always ready.` },
 
     } catch (error) {
         console.log(`ERR: ${error}`);
+        const fallback = 'Deu erro ao processar sua mensagem agora. Tente novamente em alguns segundos.';
+        try {
+            if (!hasSentFirstResponse) {
+                await message.reply(fallback);
+            } else {
+                await message.channel.send(fallback);
+            }
+        } catch (replyError) {
+            console.error('Falha ao enviar mensagem de erro para o usuario:', replyError);
+        }
     }
 });
 
@@ -406,6 +437,7 @@ const gracefulShutdown = (signal) => {
     }
 
     shutdownPromise = (async () => {
+        stopStatusRotation();
         await connectionManager.shutdown(`manual via ${signal}`);
         process.exit(0);
     })();
