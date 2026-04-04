@@ -1,5 +1,5 @@
 import { getUserMemory, buildUserMemoryPrompt, saveUserMemoryInsights } from './users.js';
-import { pickRandom } from './utils/pickRandomMsg.js';
+import { pickRandom } from '../shared/utils/pickRandomMsg.js';
 
 const MEMORY_EXTRACTION_SCHEMA = {
     type: 'json_schema',

@@ -11,6 +11,32 @@ ZeroJS é um bot de Discord em Node.js com integração à OpenAI para conversas
 - MongoDB
 - dotenv
 
+## Estrutura do projeto
+
+```text
+.
+├─ index.js                  # bootstrap de compatibilidade (chama src/index.js)
+├─ src/
+│  ├─ index.js               # entrypoint principal do bot
+│  ├─ core/                  # núcleo da aplicação (persona, conexão)
+│  ├─ services/              # integrações externas e regras de serviço
+│  │  ├─ audio/
+│  │  └─ discord/
+│  ├─ features/              # funcionalidades por domínio
+│  │  └─ activation/
+│  └─ shared/
+│     └─ utils/
+├─ scripts/
+│  └─ test.js                # teste interativo local
+└─ img/
+```
+
+## Scripts
+
+- `npm run start` inicia o bot em modo normal.
+- `npm run dev` inicia o bot com watch mode.
+- `npm run test` executa o modo de teste interativo local.
+
 ## Principais funcionalidades
 
 - Integração com OpenAI para respostas inteligentes.

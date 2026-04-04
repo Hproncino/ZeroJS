@@ -1,5 +1,5 @@
 import { ActivityType } from 'discord.js';
-import { pickRandom } from './utils/pickRandomMsg.js';
+import { pickRandom } from '../shared/utils/pickRandomMsg.js';
 
 export const BOT_SYSTEM_PROMPT = `Your name is Zero. You are inspired by Herta from Honkai: Star Rail,
 but you are not her — your personality is unique.

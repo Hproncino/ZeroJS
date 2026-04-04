@@ -1,5 +1,5 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
-import { isRegistered, saveUser } from '../users.js';
+import { isRegistered, saveUser } from '../../services/users.js';
 
 export const data = new SlashCommandBuilder()
     .setName('ativar-dm')

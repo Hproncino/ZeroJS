@@ -1,23 +1,23 @@
 import dotenv from 'dotenv';
 import { Client, GatewayIntentBits, Partials, AttachmentBuilder, MessageFlags, Events } from 'discord.js';
 import { OpenAI } from 'openai';
-import { pickFirstAudioAttachment, transcribeAttachment } from './voiceToText.js';
+import { pickFirstAudioAttachment, transcribeAttachment } from './services/audio/voiceToText.js';
 import fs from 'fs';
 import path from 'path';
-import { isRegistered, shouldPersistUserMemory } from './users.js';
+import { isRegistered, shouldPersistUserMemory } from './services/users.js';
 import {
     getUserMemorySystemMessage,
     persistUserMemoryFromConversation,
-} from './userMemoryService.js';
+} from './services/userMemoryService.js';
 import {
     BOT_SYSTEM_PROMPT,
     restartStatusRotation,
     stopStatusRotation,
-} from './botPersona.js';
-import { registerGlobalCommands } from './discordCommands.js';
-import { pickRandom } from './utils/pickRandomMsg.js';
-import * as ativar from './commands/ativar.js';
-import { createConnectionManager } from './connectionManager.js';
+} from './core/botPersona.js';
+import { registerGlobalCommands } from './services/discord/discordCommands.js';
+import { pickRandom } from './shared/utils/pickRandomMsg.js';
+import * as ativar from './features/activation/ativar.js';
+import { createConnectionManager } from './core/connectionManager.js';
 
 dotenv.config({ override: true });
 

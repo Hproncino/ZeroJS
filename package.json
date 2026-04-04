@@ -2,9 +2,11 @@
   "name": "zerojs",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "src/index.js",
   "scripts": {
-    "test": "node test.js"
+    "start": "node index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node scripts/test.js"
   },
   "type": "module",
   "keywords": [],
