@@ -24,17 +24,33 @@ const getCollection = async () => {
 };
 
 export const saveUser = async (id, username) => {
-    const col = await getCollection();
-    await col.updateOne(
-        { id },
-        { $set: { id, username }, $setOnInsert: { registeredAt: new Date().toISOString() } },
-        { upsert: true }
-    );
+    try {
+        console.log(`[DB] Tentando salvar usuário: ${username} (${id})`);
+        const col = await getCollection();
+        const result = await col.updateOne(
+            { id },
+            { $set: { id, username }, $setOnInsert: { registeredAt: new Date().toISOString() } },
+            { upsert: true }
+        );
+        console.log(`[DB] ✅ Usuário salvo: upserted=${result.upsertedCount > 0 ? 'novo' : 'atualizado'}`);
+    } catch (error) {
+        console.error(`[DB] ❌ Erro ao salvar usuário:`, error.message);
+        throw error;
+    }
 };
 
 export const isRegistered = async (id) => {
-    const col = await getCollection();
-    return Boolean(await col.findOne({ id }));
+    try {
+        console.log(`[DB] Verificando registro para ID: ${id}`);
+        const col = await getCollection();
+        const user = await col.findOne({ id });
+        const exists = Boolean(user);
+        console.log(`[DB] ✅ Resultado: ${exists ? 'registrado' : 'não registrado'}`);
+        return exists;
+    } catch (error) {
+        console.error(`[DB] ❌ Erro ao verificar registro:`, error.message);
+        throw error;
+    }
 };
 
 const normalizeUniqueStrings = (items, maxItems) => {

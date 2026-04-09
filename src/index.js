@@ -55,7 +55,7 @@ client.once(Events.ClientReady, async () => {
             client.application.id,
             [ativar.data.toJSON()]
         );
-        console.log('Slash command /ativar registrado com sucesso.');
+        console.log('Slash command /ativar-dm registrado com sucesso.');
     } catch (error) {
         console.error('Erro ao registrar slash command:', error);
     }
@@ -66,7 +66,7 @@ client.on('interactionCreate', async (interaction) => {
     try {
         await ativar.execute(interaction);
     } catch (error) {
-        console.error('Erro ao processar /ativar:', error);
+        console.error('Erro ao processar /ativar-dm:', error);
         if (!interaction.replied && !interaction.deferred) {
             await interaction.reply({
                 content: 'Não consegui acessar o banco agora. Tenta novamente em instantes.',
@@ -139,6 +139,7 @@ const shouldSendRandomImage = () => {
 
 // Evita ping repetido: cada usuario recebe mencao apenas na primeira resposta.
 const usersMentionedOnce = new Set();
+const usersWarnedDbDegradedMode = new Set();
 
 const shouldMentionUser = (userId) => {
     if (usersMentionedOnce.has(userId)) return false;
@@ -146,58 +147,114 @@ const shouldMentionUser = (userId) => {
     return true;
 };
 
-client.on('messageCreate', async (message) => {
-    if (message.system) return;
-    if (message.author.bot) return;
-    const isDM = !message.guild;
-    if (!isDM && message.channel.id !== process.env.CHANNEL_ID) return;
-    if (message.content.startsWith('!')) return;
+const openaiRequestWithTimeout = async (requestPromise, timeoutMs = 45000) => {
+    let timeoutId;
 
-    // Portão de registro: bloqueia DMs de usuários não confirmados
-    if (isDM) {
+    const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+            reject(new Error(`OpenAI request timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+    });
+
+    try {
+        return await Promise.race([requestPromise, timeoutPromise]);
+    } finally {
+        clearTimeout(timeoutId);
+    }
+};
+
+client.on('messageCreate', async (message) => {
+    try {
+        const authorName = message.author?.username ?? 'unknown';
+        const guildName = message.guild?.name ?? 'DM';
+        const channelId = message.channel?.id ?? 'unknown';
+        const content = String(message.content ?? '');
+
+        console.log(`\n[🔔 MSG RECEBIDA] De: ${authorName} | Guild: ${guildName} | Channel ID: ${channelId} | Conteúdo: "${content.substring(0, 80)}"`);
+        
+        if (message.system) {
+            console.log('[FILTRO] → Ignorando mensagem de sistema');
+            return;
+        }
+        if (message.author?.bot) {
+            console.log('[FILTRO] → Ignorando mensagem de bot');
+            return;
+        }
+        
+        const isDM = !message.guild;
+        console.log(`[CONFIG] isDM: ${isDM} | Channel esperado: ${process.env.CHANNEL_ID} | Channel recebido: ${channelId}`);
+        
+        if (!isDM && channelId !== process.env.CHANNEL_ID) {
+            console.log(`[FILTRO] → Canal incorreto (esperado: ${process.env.CHANNEL_ID}, recebido: ${channelId})`);
+            return;
+        }
+        if (content.startsWith('!')) {
+            console.log('[FILTRO] → Ignorando comando com "!"');
+            return;
+        }
+        
+        console.log('[✅ PASSOU] Passou em todas as validações, iniciando processamento...');
+
+        // Portão de registro: bloqueia DMs de usuários não confirmados
+        if (isDM) {
+        console.log(`[DM] 📬 DM recebida de ${message.author.username} (${message.author.id})`);
         let registered = false;
+        let shouldBypassRegistrationCheck = false;
         try {
             registered = await isRegistered(message.author.id);
         } catch (error) {
-            console.error('Erro ao consultar registros no MongoDB:', error);
-            await message.reply('Meu banco de dados está indisponível agora. Tente novamente em alguns minutos.');
-            return;
+            console.error('[DM] ❌ Erro ao consultar MongoDB:', error.message);
+            shouldBypassRegistrationCheck = true;
+
+            if (!usersWarnedDbDegradedMode.has(message.author.id)) {
+                usersWarnedDbDegradedMode.add(message.author.id);
+                await message.reply(
+                    'Meu banco está instável agora. Vou seguir em modo degradado e responder por aqui mesmo.'
+                );
+            }
         }
 
-        if (!registered) {
+        if (!shouldBypassRegistrationCheck && !registered) {
+            console.log(`[DM] 🚫 Usuário NÃO registrado. Bloqueando acesso.`);
             await message.reply(
-                'Ei, espera — você ainda não me ativou.\nUsa o comando **/ativar** em algum servidor que eu esteja para liberar acesso à minha DM.\n*...Não é tão difícil assim, né?*'
+                'Ei, espera — você ainda não me ativou.\nUsa o comando **/ativar-dm** em algum servidor que eu esteja para liberar acesso à minha DM.\n*...Não é tão difícil assim, né?*'
             );
             return;
         }
-    }
 
-    // se houver uma mensagem de audio, roda a transcrição
-    const audioAttachment = pickFirstAudioAttachment(message.attachments);
-    let userContent = message.content;
-    if (audioAttachment) {
-        await message.channel.sendTyping();
-        const transcript = await transcribeAttachment(openai, audioAttachment);
-        if (transcript) {
-            userContent = `[Transcrição de áudio]\n${transcript}`;
+        if (shouldBypassRegistrationCheck) {
+            console.log('[DM] ⚠️ Modo degradado ativo: validação de cadastro ignorada por indisponibilidade do MongoDB.');
+        } else {
+            console.log(`[DM] ✅ Usuário registrado. Permitindo acesso.`);
         }
-    }
+        }
 
-    let hasSentFirstResponse = false;
+        // se houver uma mensagem de audio, roda a transcrição
+        const audioAttachment = pickFirstAudioAttachment(message.attachments);
+        let userContent = content;
+        if (audioAttachment) {
+            await message.channel.sendTyping();
+            const transcript = await transcribeAttachment(openai, audioAttachment);
+            if (transcript) {
+                userContent = `[Transcrição de áudio]\n${transcript}`;
+            }
+        }
 
-    const sendResponseChunk = async (content, files = []) => {
+        let hasSentFirstResponse = false;
+
+        const sendResponseChunk = async (chunkContent, files = []) => {
         if (!hasSentFirstResponse) {
             const mentionUser = shouldMentionUser(message.author.id);
 
             if (files.length > 0) {
                 await message.reply({
-                    content,
+                    content: chunkContent,
                     files,
                     allowedMentions: { repliedUser: mentionUser },
                 });
             } else {
                 await message.reply({
-                    content,
+                    content: chunkContent,
                     allowedMentions: { repliedUser: mentionUser },
                 });
             }
@@ -212,7 +269,7 @@ client.on('messageCreate', async (message) => {
         }
     };
 
-    const sendChunks = async (text) => {
+        const sendChunks = async (text) => {
         if (typeof text !== 'string') {
             console.error('Texto provido não é do tipo string.');
             return;
@@ -245,23 +302,36 @@ client.on('messageCreate', async (message) => {
         }
     };
 
-    let conversationLog = [{ role: 'system', content: BOT_SYSTEM_PROMPT }];
+        let conversationLog = [{ role: 'system', content: BOT_SYSTEM_PROMPT }];
 
-    try {
+        try {
         // Envia typing apenas uma vez no início
         await message.channel.sendTyping();
 
-        // Carrega memoria e contexto de mensagens em paralelo para reduzir latencia.
-        const prevMessagesPromise = message.channel.messages.fetch({ limit: 10 });
-        const memoryPromptPromise = getUserMemorySystemMessage(message.author.id).catch((memoryError) => {
-            console.error('Falha ao carregar memoria do usuario:', memoryError);
-            return '';
-        });
+        let prevMessagesRaw = new Map();
+        let memoryPrompt = '';
 
-        const [prevMessagesRaw, memoryPrompt] = await Promise.all([
-            prevMessagesPromise,
-            memoryPromptPromise,
-        ]);
+        if (isDM) {
+            console.log('[CTX][DM] Pulando histórico de canal e carregando apenas memória do usuário');
+            memoryPrompt = await getUserMemorySystemMessage(message.author.id).catch((memoryError) => {
+                console.error('Falha ao carregar memoria do usuario em DM:', memoryError);
+                return '';
+            });
+        } else {
+            // Carrega memoria e contexto de mensagens em paralelo para reduzir latencia.
+            console.log('[CTX] Iniciando fetch do histórico e da memória do usuário');
+            const prevMessagesPromise = message.channel.messages.fetch({ limit: 10 });
+            const memoryPromptPromise = getUserMemorySystemMessage(message.author.id).catch((memoryError) => {
+                console.error('Falha ao carregar memoria do usuario:', memoryError);
+                return '';
+            });
+
+            [prevMessagesRaw, memoryPrompt] = await Promise.all([
+                prevMessagesPromise,
+                memoryPromptPromise,
+            ]);
+            console.log(`[CTX] Histórico carregado: ${prevMessagesRaw.size} mensagens | memória carregada: ${Boolean(memoryPrompt)}`);
+        }
 
         if (memoryPrompt) {
             conversationLog.push({ role: 'system', content: memoryPrompt });
@@ -332,18 +402,28 @@ client.on('messageCreate', async (message) => {
                 .replace(/[^\w\s]/gi, ''),
         });
 
-        const stream = await openai.chat.completions.create({
-            model: 'gpt-4o-2024-11-20',
-            messages: conversationLog,
-            max_completion_tokens: 2048,
-            stream: true,
-            // Otimizações para velocidade mantendo qualidade
-            temperature: 0.8, // Ligeiramente mais baixo para respostas mais focadas
-            top_p: 0.95,
-        });
+        console.log(`[OPENAI] Entrada liberada user=${message.author.id} origem=${isDM ? 'DM' : 'Guild'} channel=${message.channel.id}`);
+        console.log(`[OPENAI] Iniciando chamada com ${conversationLog.length} mensagens no contexto`);
+
+        const stream = await openaiRequestWithTimeout(
+            openai.chat.completions.create({
+                model: 'gpt-4o-2024-11-20',
+                messages: conversationLog,
+                max_completion_tokens: 2048,
+                stream: true,
+                // Otimizações para velocidade mantendo qualidade
+                temperature: 0.8,
+                top_p: 0.95,
+            }),
+            45000
+        );
+
+        console.log('[OPENAI] Stream recebido com sucesso, iniciando leitura');
 
         let response = '';
         let currentChunk = '';
+        
+        console.log('[STREAM] Iniciando processamento de stream');
         
         // Processa o stream e envia em tempo real
         for await (const part of stream) {
@@ -356,11 +436,14 @@ client.on('messageCreate', async (message) => {
                 const shouldSend = currentChunk.length >= 1500 && /[.!?\n]$/.test(currentChunk.trim());
                 
                 if (shouldSend) {
+                    console.log(`[STREAM] Enviando chunk com ${currentChunk.length} caracteres`);
                     await sendResponseChunk(currentChunk);
                     currentChunk = '';
                 }
             }
         }
+        
+        console.log(`[STREAM] Stream finalizado. Resposta total: ${response.length} caracteres`);
         
         // Envia qualquer conteúdo restante
         if (currentChunk.length > 0) {
@@ -406,18 +489,21 @@ client.on('messageCreate', async (message) => {
             console.error('Falha ao atualizar memoria do usuario:', memoryPersistError);
         }
 
-    } catch (error) {
-        console.log(`ERR: ${error}`);
-        const fallback = 'Deu erro ao processar sua mensagem agora. Tente novamente em alguns segundos.';
-        try {
-            if (!hasSentFirstResponse) {
-                await message.reply(fallback);
-            } else {
-                await message.channel.send(fallback);
+        } catch (error) {
+            console.log(`ERR: ${error}`);
+            const fallback = 'Deu erro ao processar sua mensagem agora. Tente novamente em alguns segundos.';
+            try {
+                if (!hasSentFirstResponse) {
+                    await message.reply(fallback);
+                } else {
+                    await message.channel.send(fallback);
+                }
+            } catch (replyError) {
+                console.error('Falha ao enviar mensagem de erro para o usuario:', replyError);
             }
-        } catch (replyError) {
-            console.error('Falha ao enviar mensagem de erro para o usuario:', replyError);
         }
+    } catch (error) {
+        console.error('[messageCreate] Falha não tratada no início do fluxo:', error);
     }
 });
 
