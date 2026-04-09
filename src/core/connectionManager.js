@@ -15,6 +15,7 @@ export const createConnectionManager = (client, options) => {
     let isShuttingDown = false;
     let handlersRegistered = false;
     let startPromise = null;
+    const normalizedToken = typeof token === 'string' ? token.trim() : '';
 
     const getReconnectDelay = (attempt) => {
         const delay = baseReconnectDelayMs * (2 ** Math.max(0, attempt - 1));
@@ -108,16 +109,27 @@ export const createConnectionManager = (client, options) => {
         if (isShuttingDown) return;
         if (startPromise) return startPromise;
 
+        if (!normalizedToken) {
+            console.error('TOKEN do Discord ausente ou vazio. Verifique o arquivo .env e as variáveis de ambiente.');
+            return;
+        }
+
         startPromise = (async () => {
             try {
-                await client.login(token);
+                await client.login(normalizedToken);
             } catch (error) {
                 console.error('Falha ao iniciar o bot:', error);
+                startPromise = null;
                 scheduleReconnect('falha no startup');
+                throw error;
+            } finally {
+                if (!client.isReady()) {
+                    startPromise = null;
+                }
             }
         })();
 
-        return startPromise;
+        return startPromise.catch(() => undefined);
     };
 
     const shutdown = async (reason = 'manual') => {

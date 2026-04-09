@@ -21,6 +21,8 @@ import { createConnectionManager } from './core/connectionManager.js';
 
 dotenv.config({ override: true });
 
+const discordToken = process.env.TOKEN?.trim();
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -32,7 +34,7 @@ const client = new Client({
 });
 
 const connectionManager = createConnectionManager(client, {
-    token: process.env.TOKEN,
+    token: discordToken,
     maxReconnectAttempts: 8,
     baseReconnectDelayMs: 2000,
     maxReconnectDelayMs: 30000,
@@ -49,7 +51,7 @@ client.once(Events.ClientReady, async () => {
     console.log('O bot está online');
     try {
         await registerGlobalCommands(
-            process.env.TOKEN,
+            discordToken,
             client.application.id,
             [ativar.data.toJSON()]
         );
