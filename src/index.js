@@ -27,10 +27,11 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildMembers,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.DirectMessages,
     ],
-    partials: [Partials.Channel],
+    partials: [Partials.Channel, Partials.Message, Partials.User],
 });
 
 const connectionManager = createConnectionManager(client, {
@@ -42,6 +43,61 @@ const connectionManager = createConnectionManager(client, {
 });
 
 connectionManager.registerClientHandlers();
+
+client.on(Events.Raw, (packet) => {
+    if (packet?.t !== 'MESSAGE_CREATE') return;
+    const guildId = packet?.d?.guild_id ?? 'DM';
+    const channelId = packet?.d?.channel_id ?? 'unknown';
+    const authorId = packet?.d?.author?.id ?? 'unknown';
+    console.log(`[RAW] MESSAGE_CREATE guild=${guildId} channel=${channelId} author=${authorId}`);
+
+    if (packet?.d?.guild_id) return;
+
+    (async () => {
+        try {
+            const channel = await client.channels.fetch(channelId);
+            if (!channel) return;
+
+            const attachments = new Map(
+                (packet.d.attachments || []).map((attachment) => [attachment.id, attachment])
+            );
+
+            const syntheticMessage = {
+                id: packet.d.id,
+                system: false,
+                guild: null,
+                content: packet.d.content || '',
+                attachments,
+                author: {
+                    id: packet.d.author?.id,
+                    username: packet.d.author?.username || 'unknown',
+                    bot: Boolean(packet.d.author?.bot),
+                },
+                channel,
+                reply: async (payload) => {
+                    if (typeof payload === 'string') {
+                        return channel.send(payload);
+                    }
+
+                    const nextPayload = { ...payload };
+                    if (!nextPayload.reply) {
+                        nextPayload.reply = {
+                            messageReference: packet.d.id,
+                            failIfNotExists: false,
+                        };
+                    }
+
+                    return channel.send(nextPayload);
+                },
+            };
+
+            console.log(`[RAW->DM] Repassando DM sintética para messageCreate: ${syntheticMessage.id}`);
+            client.emit('messageCreate', syntheticMessage);
+        } catch (error) {
+            console.error('[RAW->DM] Falha ao reconstruir DM sintética:', error);
+        }
+    })();
+});
 
 client.on(Events.ClientReady, () => {
     restartStatusRotation(client);
@@ -170,14 +226,14 @@ client.on('messageCreate', async (message) => {
         const channelId = message.channel?.id ?? 'unknown';
         const content = String(message.content ?? '');
 
-        console.log(`\n[🔔 MSG RECEBIDA] De: ${authorName} | Guild: ${guildName} | Channel ID: ${channelId} | Conteúdo: "${content.substring(0, 80)}"`);
+        console.log(`\n[MSG RECEBIDA] De: ${authorName} | Guild: ${guildName} | Channel ID: ${channelId} | Conteúdo: "${content.substring(0, 80)}"`);
         
         if (message.system) {
-            console.log('[FILTRO] → Ignorando mensagem de sistema');
+            console.log('[FILTRO] Ignorando mensagem de sistema');
             return;
         }
         if (message.author?.bot) {
-            console.log('[FILTRO] → Ignorando mensagem de bot');
+            console.log('[FILTRO] Ignorando mensagem de bot');
             return;
         }
         
@@ -185,48 +241,52 @@ client.on('messageCreate', async (message) => {
         console.log(`[CONFIG] isDM: ${isDM} | Channel esperado: ${process.env.CHANNEL_ID} | Channel recebido: ${channelId}`);
         
         if (!isDM && channelId !== process.env.CHANNEL_ID) {
-            console.log(`[FILTRO] → Canal incorreto (esperado: ${process.env.CHANNEL_ID}, recebido: ${channelId})`);
+            console.log(`[FILTRO] Canal incorreto (esperado: ${process.env.CHANNEL_ID}, recebido: ${channelId})`);
             return;
         }
         if (content.startsWith('!')) {
-            console.log('[FILTRO] → Ignorando comando com "!"');
+            console.log('[FILTRO] Ignorando comando com "!"');
             return;
         }
-        
-        console.log('[✅ PASSOU] Passou em todas as validações, iniciando processamento...');
+
+        console.log('[VALIDACAO] Passou em todas as validações, iniciando processamento...');
 
         // Portão de registro: bloqueia DMs de usuários não confirmados
         if (isDM) {
-        console.log(`[DM] 📬 DM recebida de ${message.author.username} (${message.author.id})`);
-        let registered = false;
-        let shouldBypassRegistrationCheck = false;
-        try {
-            registered = await isRegistered(message.author.id);
-        } catch (error) {
-            console.error('[DM] ❌ Erro ao consultar MongoDB:', error.message);
-            shouldBypassRegistrationCheck = true;
+            console.log(`[DM] Mensagem recebida de ${message.author.username} (${message.author.id})`);
+            let registered = false;
+            let shouldBypassRegistrationCheck = false;
+            try {
+                registered = await isRegistered(message.author.id);
+            } catch (error) {
+                console.error('[DM] Erro ao consultar MongoDB:', error.message);
+                shouldBypassRegistrationCheck = true;
 
-            if (!usersWarnedDbDegradedMode.has(message.author.id)) {
-                usersWarnedDbDegradedMode.add(message.author.id);
+                if (!usersWarnedDbDegradedMode.has(message.author.id)) {
+                    usersWarnedDbDegradedMode.add(message.author.id);
+                    await message.reply(
+                        'Meu banco está instável agora. Vou seguir em modo degradado e responder por aqui mesmo.'
+                    );
+                }
+            }
+
+            if (!shouldBypassRegistrationCheck && !registered) {
+                console.log('[DM] Usuário não registrado. Bloqueando acesso.');
                 await message.reply(
-                    'Meu banco está instável agora. Vou seguir em modo degradado e responder por aqui mesmo.'
+                    'Ei, espera — você ainda não me ativou.\nUsa o comando **/ativar-dm** em algum servidor que eu esteja para liberar acesso à minha DM.\n*...Não é tão difícil assim, né?*'
                 );
+                return;
+            }
+
+            if (shouldBypassRegistrationCheck) {
+                console.log('[DM] Modo degradado ativo: validação de cadastro ignorada por indisponibilidade do MongoDB.');
+            } else {
+                console.log('[DM] Usuário registrado. Permitindo acesso.');
             }
         }
 
-        if (!shouldBypassRegistrationCheck && !registered) {
-            console.log(`[DM] 🚫 Usuário NÃO registrado. Bloqueando acesso.`);
-            await message.reply(
-                'Ei, espera — você ainda não me ativou.\nUsa o comando **/ativar-dm** em algum servidor que eu esteja para liberar acesso à minha DM.\n*...Não é tão difícil assim, né?*'
-            );
-            return;
-        }
-
-        if (shouldBypassRegistrationCheck) {
-            console.log('[DM] ⚠️ Modo degradado ativo: validação de cadastro ignorada por indisponibilidade do MongoDB.');
-        } else {
-            console.log(`[DM] ✅ Usuário registrado. Permitindo acesso.`);
-        }
+        if (!isDM) {
+            console.log(`[CANAL PRIVADO] ${authorName} (${message.author.id}) em ${channelId}`);
         }
 
         // se houver uma mensagem de audio, roda a transcrição
@@ -243,99 +303,96 @@ client.on('messageCreate', async (message) => {
         let hasSentFirstResponse = false;
 
         const sendResponseChunk = async (chunkContent, files = []) => {
-        if (!hasSentFirstResponse) {
-            const mentionUser = shouldMentionUser(message.author.id);
+            if (!hasSentFirstResponse) {
+                const mentionUser = shouldMentionUser(message.author.id);
+
+                if (files.length > 0) {
+                    await message.reply({
+                        content: chunkContent,
+                        files,
+                        allowedMentions: { repliedUser: mentionUser },
+                    });
+                } else {
+                    await message.reply({
+                        content: chunkContent,
+                        allowedMentions: { repliedUser: mentionUser },
+                    });
+                }
+                hasSentFirstResponse = true;
+                return;
+            }
 
             if (files.length > 0) {
-                await message.reply({
-                    content: chunkContent,
-                    files,
-                    allowedMentions: { repliedUser: mentionUser },
-                });
+                await message.channel.send({ content: chunkContent, files });
             } else {
-                await message.reply({
-                    content: chunkContent,
-                    allowedMentions: { repliedUser: mentionUser },
-                });
+                await message.channel.send(chunkContent);
             }
-            hasSentFirstResponse = true;
-            return;
-        }
-
-        if (files.length > 0) {
-            await message.channel.send({ content, files });
-        } else {
-            await message.channel.send(content);
-        }
-    };
+        };
 
         const sendChunks = async (text) => {
-        if (typeof text !== 'string') {
-            console.error('Texto provido não é do tipo string.');
-            return;
-        }
-
-        const phrases = text.match(/[^.!?\n]+[.!?\n]?/g) || [text];
-        const chunks = [];
-        let buffer = '';
-
-        for (const phrase of phrases) {
-            if ((buffer + phrase).length > 2000) {
-                if (buffer.length > 0) {
-                    chunks.push(buffer);
-                    buffer = '';
-                }
-                // Se uma única frase for maior que o limite, divida-a de maneira forçada.
-                if (phrase.length > 2000) {
-                    const hard = phrase.match(/(.|[\r\n]){1,2000}/g) || [phrase];
-                    for (const part of hard) chunks.push(part);
-                    continue;
-                }
+            if (typeof text !== 'string') {
+                console.error('Texto provido não é do tipo string.');
+                return;
             }
-            buffer += phrase;
-        }
-        if (buffer.length > 0) chunks.push(buffer);
 
-        // Usa a mesma regra global: primeira resposta vira reply, restante vira send.
-        for (let i = 0; i < chunks.length; i++) {
-            await sendResponseChunk(chunks[i]);
-        }
-    };
+            const phrases = text.match(/[^.!?\n]+[.!?\n]?/g) || [text];
+            const chunks = [];
+            let buffer = '';
+
+            for (const phrase of phrases) {
+                if ((buffer + phrase).length > 2000) {
+                    if (buffer.length > 0) {
+                        chunks.push(buffer);
+                        buffer = '';
+                    }
+                    // Se uma única frase for maior que o limite, divida-a de maneira forçada.
+                    if (phrase.length > 2000) {
+                        const hard = phrase.match(/(.|[\r\n]){1,2000}/g) || [phrase];
+                        for (const part of hard) chunks.push(part);
+                        continue;
+                    }
+                }
+                buffer += phrase;
+            }
+            if (buffer.length > 0) chunks.push(buffer);
+
+            // Usa a mesma regra global: primeira resposta vira reply, restante vira send.
+            for (let i = 0; i < chunks.length; i++) {
+                await sendResponseChunk(chunks[i]);
+            }
+        };
 
         let conversationLog = [{ role: 'system', content: BOT_SYSTEM_PROMPT }];
 
         try {
-        // Envia typing apenas uma vez no início
-        await message.channel.sendTyping();
+            // Envia typing apenas uma vez no início
+            await message.channel.sendTyping();
 
-        let prevMessagesRaw = new Map();
-        let memoryPrompt = '';
+            let prevMessagesRaw = new Map();
+            let memoryPrompt = '';
 
-        if (isDM) {
-            console.log('[CTX][DM] Pulando histórico de canal e carregando apenas memória do usuário');
-            memoryPrompt = await getUserMemorySystemMessage(message.author.id).catch((memoryError) => {
-                console.error('Falha ao carregar memoria do usuario em DM:', memoryError);
-                return '';
-            });
-        } else {
-            // Carrega memoria e contexto de mensagens em paralelo para reduzir latencia.
-            console.log('[CTX] Iniciando fetch do histórico e da memória do usuário');
-            const prevMessagesPromise = message.channel.messages.fetch({ limit: 10 });
-            const memoryPromptPromise = getUserMemorySystemMessage(message.author.id).catch((memoryError) => {
-                console.error('Falha ao carregar memoria do usuario:', memoryError);
-                return '';
-            });
+            if (isDM) {
+                memoryPrompt = await getUserMemorySystemMessage(message.author.id).catch((memoryError) => {
+                    console.error('Falha ao carregar memoria do usuario em DM:', memoryError);
+                    return '';
+                });
+            } else {
+                const prevMessagesPromise = message.channel.messages.fetch({ limit: 10 });
+                const memoryPromptPromise = getUserMemorySystemMessage(message.author.id).catch((memoryError) => {
+                    console.error('Falha ao carregar memoria do usuario:', memoryError);
+                    return '';
+                });
 
-            [prevMessagesRaw, memoryPrompt] = await Promise.all([
-                prevMessagesPromise,
-                memoryPromptPromise,
-            ]);
-            console.log(`[CTX] Histórico carregado: ${prevMessagesRaw.size} mensagens | memória carregada: ${Boolean(memoryPrompt)}`);
-        }
+                [prevMessagesRaw, memoryPrompt] = await Promise.all([
+                    prevMessagesPromise,
+                    memoryPromptPromise,
+                ]);
+                console.log(`[CTX] Histórico carregado: ${prevMessagesRaw.size} mensagens | memória carregada: ${Boolean(memoryPrompt)}`);
+            }
 
-        if (memoryPrompt) {
-            conversationLog.push({ role: 'system', content: memoryPrompt });
-        }
+            if (memoryPrompt) {
+                conversationLog.push({ role: 'system', content: memoryPrompt });
+            }
 
         // Usa uma janela de ate 10 mensagens recentes do usuario para montar ate 3 candidatos para sorteio da memoria.
         const memorySourceCandidates = [];
@@ -366,8 +423,11 @@ client.on('messageCreate', async (message) => {
         }
 
         // contexto de 10 mensagens anteriores
-        let prevMessages = prevMessagesRaw.filter(msg => msg.author.id === client.user.id || msg.author.id === message.author.id);
-        prevMessages.reverse();
+        const prevMessages = isDM
+            ? []
+            : [...prevMessagesRaw.values()]
+                .filter((msg) => msg.author.id === client.user.id || msg.author.id === message.author.id)
+                .reverse();
 
         prevMessages.forEach((msg) => {
             if (msg.system) return;
@@ -402,64 +462,59 @@ client.on('messageCreate', async (message) => {
                 .replace(/[^\w\s]/gi, ''),
         });
 
-        console.log(`[OPENAI] Entrada liberada user=${message.author.id} origem=${isDM ? 'DM' : 'Guild'} channel=${message.channel.id}`);
-        console.log(`[OPENAI] Iniciando chamada com ${conversationLog.length} mensagens no contexto`);
+            console.log(`[OPENAI] Entrada liberada user=${message.author.id} origem=${isDM ? 'DM' : 'Guild'} channel=${message.channel.id}`);
+            console.log(`[OPENAI] Iniciando chamada com ${conversationLog.length} mensagens no contexto`);
 
-        const stream = await openaiRequestWithTimeout(
-            openai.chat.completions.create({
-                model: 'gpt-4o-2024-11-20',
-                messages: conversationLog,
-                max_completion_tokens: 2048,
-                stream: true,
-                // Otimizações para velocidade mantendo qualidade
-                temperature: 0.8,
-                top_p: 0.95,
-            }),
-            45000
-        );
+            const stream = await openaiRequestWithTimeout(
+                openai.chat.completions.create({
+                    model: 'gpt-4o-2024-11-20',
+                    messages: conversationLog,
+                    max_completion_tokens: 2048,
+                    stream: true,
+                    temperature: 0.8,
+                    top_p: 0.95,
+                }),
+                45000
+            );
 
-        console.log('[OPENAI] Stream recebido com sucesso, iniciando leitura');
+            console.log('[OPENAI] Stream recebido com sucesso, iniciando leitura');
 
-        let response = '';
-        let currentChunk = '';
-        
-        console.log('[STREAM] Iniciando processamento de stream');
-        
-        // Processa o stream e envia em tempo real
-        for await (const part of stream) {
-            const content = part.choices[0]?.delta?.content || '';
-            if (content) {
-                response += content;
-                currentChunk += content;
-                
-                // Envia chunk quando atingir ~1500 chars ou encontrar fim de frase
-                const shouldSend = currentChunk.length >= 1500 && /[.!?\n]$/.test(currentChunk.trim());
-                
-                if (shouldSend) {
-                    console.log(`[STREAM] Enviando chunk com ${currentChunk.length} caracteres`);
-                    await sendResponseChunk(currentChunk);
-                    currentChunk = '';
+            let response = '';
+            let currentChunk = '';
+
+            console.log('[STREAM] Iniciando processamento de stream');
+
+            for await (const part of stream) {
+                const contentPart = part.choices[0]?.delta?.content || '';
+                if (contentPart) {
+                    response += contentPart;
+                    currentChunk += contentPart;
+
+                    const shouldSend = currentChunk.length >= 1500 && /[.!?\n]$/.test(currentChunk.trim());
+
+                    if (shouldSend) {
+                        console.log(`[STREAM] Enviando chunk com ${currentChunk.length} caracteres`);
+                        await sendResponseChunk(currentChunk);
+                        currentChunk = '';
+                    }
                 }
             }
-        }
-        
-        console.log(`[STREAM] Stream finalizado. Resposta total: ${response.length} caracteres`);
-        
-        // Envia qualquer conteúdo restante
-        if (currentChunk.length > 0) {
-            // Decide se vai enviar uma imagem junto com a resposta final
-            const sendWithImage = shouldSendRandomImage();
-            const randomImage = sendWithImage ? getRandomImage() : null;
 
-            if (randomImage) {
-                const attachment = new AttachmentBuilder(randomImage);
-                await sendResponseChunk(currentChunk, [attachment]);
-            } else {
-                await sendResponseChunk(currentChunk);
+            console.log(`[STREAM] Stream finalizado. Resposta total: ${response.length} caracteres`);
+
+            if (currentChunk.length > 0) {
+                const sendWithImage = shouldSendRandomImage();
+                const randomImage = sendWithImage ? getRandomImage() : null;
+
+                if (randomImage) {
+                    const attachment = new AttachmentBuilder(randomImage);
+                    await sendResponseChunk(currentChunk, [attachment]);
+                } else {
+                    await sendResponseChunk(currentChunk);
+                }
             }
-        }
-        
-        console.log(`Resposta completa: ${response}`);
+
+            console.log(`Resposta completa: ${response}`);
 
         // Atualiza memoria apenas a cada 3 mensagens por usuario.
         try {
