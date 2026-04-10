@@ -196,6 +196,28 @@ const shouldSendRandomImage = () => {
 // Evita ping repetido: cada usuario recebe mencao apenas na primeira resposta.
 const usersMentionedOnce = new Set();
 const usersWarnedDbDegradedMode = new Set();
+const processedMessageIds = new Map();
+
+const PROCESSED_MESSAGE_TTL_MS = 2 * 60 * 1000;
+
+const isDuplicateMessage = (messageId) => {
+    if (!messageId) return false;
+
+    const now = Date.now();
+
+    for (const [id, timestamp] of processedMessageIds.entries()) {
+        if (now - timestamp > PROCESSED_MESSAGE_TTL_MS) {
+            processedMessageIds.delete(id);
+        }
+    }
+
+    if (processedMessageIds.has(messageId)) {
+        return true;
+    }
+
+    processedMessageIds.set(messageId, now);
+    return false;
+};
 
 const shouldMentionUser = (userId) => {
     if (usersMentionedOnce.has(userId)) return false;
@@ -246,6 +268,11 @@ client.on('messageCreate', async (message) => {
         }
         if (content.startsWith('!')) {
             console.log('[FILTRO] Ignorando comando com "!"');
+            return;
+        }
+
+        if (isDuplicateMessage(message.id)) {
+            console.log(`[FILTRO] Mensagem duplicada detectada e ignorada: ${message.id}`);
             return;
         }
 
@@ -371,24 +398,22 @@ client.on('messageCreate', async (message) => {
             let prevMessagesRaw = new Map();
             let memoryPrompt = '';
 
-            if (isDM) {
-                memoryPrompt = await getUserMemorySystemMessage(message.author.id).catch((memoryError) => {
-                    console.error('Falha ao carregar memoria do usuario em DM:', memoryError);
-                    return '';
+            const prevMessagesPromise = message.channel.messages
+                .fetch({ limit: 10 })
+                .catch((historyError) => {
+                    console.error('Falha ao carregar histórico do canal:', historyError);
+                    return new Map();
                 });
-            } else {
-                const prevMessagesPromise = message.channel.messages.fetch({ limit: 10 });
-                const memoryPromptPromise = getUserMemorySystemMessage(message.author.id).catch((memoryError) => {
-                    console.error('Falha ao carregar memoria do usuario:', memoryError);
-                    return '';
-                });
+            const memoryPromptPromise = getUserMemorySystemMessage(message.author.id).catch((memoryError) => {
+                console.error('Falha ao carregar memoria do usuario:', memoryError);
+                return '';
+            });
 
-                [prevMessagesRaw, memoryPrompt] = await Promise.all([
-                    prevMessagesPromise,
-                    memoryPromptPromise,
-                ]);
-                console.log(`[CTX] Histórico carregado: ${prevMessagesRaw.size} mensagens | memória carregada: ${Boolean(memoryPrompt)}`);
-            }
+            [prevMessagesRaw, memoryPrompt] = await Promise.all([
+                prevMessagesPromise,
+                memoryPromptPromise,
+            ]);
+            console.log(`[CTX] Histórico carregado: ${prevMessagesRaw.size} mensagens (${isDM ? 'DM' : 'Guild'}) | memória carregada: ${Boolean(memoryPrompt)}`);
 
             if (memoryPrompt) {
                 conversationLog.push({ role: 'system', content: memoryPrompt });
@@ -423,11 +448,9 @@ client.on('messageCreate', async (message) => {
         }
 
         // contexto de 10 mensagens anteriores
-        const prevMessages = isDM
-            ? []
-            : [...prevMessagesRaw.values()]
-                .filter((msg) => msg.author.id === client.user.id || msg.author.id === message.author.id)
-                .reverse();
+        const prevMessages = [...prevMessagesRaw.values()]
+            .filter((msg) => msg.author.id === client.user.id || msg.author.id === message.author.id)
+            .reverse();
 
         prevMessages.forEach((msg) => {
             if (msg.system) return;
