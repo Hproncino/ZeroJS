@@ -23,23 +23,23 @@ export const execute = async (interaction) => {
 
         console.log(`[/ATIVAR] Salvando novo usuário: ${user.username}`);
         await saveUser(user.id, user.username);
-        console.log(`[/ATIVAR] ✅ Usuário salvo com sucesso`);
+        console.log('[/ATIVAR] Usuário salvo com sucesso');
 
         try {
             console.log(`[/ATIVAR] Tentando enviar DM para ${user.username}...`);
             await user.send('Pronto. Você está ativado agora. Pode falar comigo aqui quando quiser. *...Não demorou tanto assim, né?*');
-            console.log(`[/ATIVAR] ✅ DM enviada com sucesso`);
+            console.log('[/ATIVAR] DM enviada com sucesso');
         } catch (dmError) {
-            console.error(`[/ATIVAR] ❌ Erro ao enviar DM:`, dmError.message);
+            console.error('[/ATIVAR] Erro ao enviar DM:', dmError.message);
         }
 
         await interaction.reply({
             content: 'Feito! Agora você pode me enviar mensagens na DM. *Não me decepcione.*',
             flags: MessageFlags.Ephemeral,
         });
-        console.log(`[/ATIVAR] ✅ Resposta enviada no servidor`);
+        console.log('[/ATIVAR] Resposta enviada no servidor');
     } catch (error) {
-        console.error('[/ATIVAR] ❌ Falha no processo de ativação:', error);
+        console.error('[/ATIVAR] Falha no processo de ativação:', error);
 
         if (!interaction.replied && !interaction.deferred) {
             await interaction.reply({

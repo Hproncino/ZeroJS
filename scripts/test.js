@@ -167,7 +167,7 @@ async function interactiveMode() {
 
             if (trimmed === '/clear') {
                 conversationHistory = createConversationHistory();
-                console.log('🗑️  Histórico limpo!\n');
+                console.log('Histórico limpo!\n');
                 continue;
             }
 

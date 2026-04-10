@@ -32,9 +32,9 @@ export const saveUser = async (id, username) => {
             { $set: { id, username }, $setOnInsert: { registeredAt: new Date().toISOString() } },
             { upsert: true }
         );
-        console.log(`[DB] ✅ Usuário salvo: upserted=${result.upsertedCount > 0 ? 'novo' : 'atualizado'}`);
+        console.log(`[DB] Usuário salvo: upserted=${result.upsertedCount > 0 ? 'novo' : 'atualizado'}`);
     } catch (error) {
-        console.error(`[DB] ❌ Erro ao salvar usuário:`, error.message);
+        console.error('[DB] Erro ao salvar usuário:', error.message);
         throw error;
     }
 };
@@ -45,10 +45,10 @@ export const isRegistered = async (id) => {
         const col = await getCollection();
         const user = await col.findOne({ id });
         const exists = Boolean(user);
-        console.log(`[DB] ✅ Resultado: ${exists ? 'registrado' : 'não registrado'}`);
+        console.log(`[DB] Resultado: ${exists ? 'registrado' : 'não registrado'}`);
         return exists;
     } catch (error) {
-        console.error(`[DB] ❌ Erro ao verificar registro:`, error.message);
+        console.error('[DB] Erro ao verificar registro:', error.message);
         throw error;
     }
 };
