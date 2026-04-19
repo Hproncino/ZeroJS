@@ -61,7 +61,7 @@ ZeroJS é um bot do Discord em Node.js com integração à OpenAI para conversas
 
 ## Exemplos
 
-![Exemplo1](image.png)
+![Exemplo1](img\exemplos\image2.png)
 
 ![Exemplo 2](https://github.com/user-attachments/assets/5330edd2-1507-4119-b089-aaeafcc29954)
 
