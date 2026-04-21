@@ -2,6 +2,8 @@
 
 ZeroJS é um bot do Discord em Node.js com integração à OpenAI para conversas inteligentes, respostas em tempo real e suporte a transcrição de áudio.
 
+Guia de instalação das tecnologias: [README.instalacao.md](./README.instalacao.md)
+
 ## Tecnologias utilizadas
 
 - Node.js
