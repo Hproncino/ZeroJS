@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import util from 'node:util';
+import { saveRuntimeShutdownReport } from '../services/runtimeLogStore.js';
 
 let initialized = false;
 let runLogPath = null;
@@ -20,6 +21,7 @@ let lastFatal = null; // { type, value, at }
 let shutdownMeta = null; // { reason, signal }
 
 let shutdownReportWritten = false;
+let shutdownReportUploaded = false;
 
 const pad2 = (n) => String(n).padStart(2, '0');
 const pad3 = (n) => String(n).padStart(3, '0');
@@ -126,6 +128,97 @@ const snapshotForReport = () => {
     };
 };
 
+const readFileTailSync = (filePath, maxBytes) => {
+    if (!filePath) return null;
+    const limit = Math.max(0, Number(maxBytes) || 0);
+    if (limit <= 0) return null;
+
+    try {
+        const stats = fs.statSync(filePath);
+        const size = Number(stats.size || 0);
+        if (!Number.isFinite(size) || size <= 0) return null;
+
+        const start = Math.max(0, size - limit);
+        const length = size - start;
+        if (length <= 0) return null;
+
+        const fd = fs.openSync(filePath, 'r');
+        try {
+            const buf = Buffer.alloc(length);
+            fs.readSync(fd, buf, 0, length, start);
+            return buf.toString('utf8');
+        } finally {
+            try {
+                fs.closeSync(fd);
+            } catch {
+                // ignore
+            }
+        }
+    } catch {
+        return null;
+    }
+};
+
+const serializeSnapshotForMongo = (snap, exitCode) => {
+    const safeTail = Array.isArray(snap.tail) ? snap.tail.map((l) => String(l || '').replace(/\n$/, '')) : [];
+
+    const fatalText = snap.lastFatal
+        ? String(safeInspect(snap.lastFatal.value)).slice(0, 20000)
+        : null;
+
+    const runLogTailText = readFileTailSync(snap.runLogPath, 200_000);
+
+    return {
+        kind: 'shutdown_report',
+        createdAt: new Date(),
+        exitCode: typeof exitCode === 'number' ? exitCode : Number(exitCode) || 0,
+        at: snap.at,
+        pid: snap.pid,
+        node: snap.node,
+        platform: snap.platform,
+        hostname: snap.hostname,
+        cwd: snap.cwd,
+        runLogPath: snap.runLogPath,
+        runLogTailText,
+        shutdownMeta: snap.shutdownMeta || null,
+        currentActivity: snap.currentActivity || null,
+        activityHistory: snap.activityHistory || [],
+        lastFatal: snap.lastFatal
+            ? { type: snap.lastFatal.type, at: snap.lastFatal.at, text: fatalText }
+            : null,
+        tail: safeTail,
+    };
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export const uploadShutdownReportToMongo = async (exitCode, options = {}) => {
+    if (shutdownReportUploaded) return null;
+    shutdownReportUploaded = true;
+
+    const timeoutMs = Number.isFinite(options.timeoutMs) ? options.timeoutMs : 4500;
+    const snap = snapshotForReport();
+    const doc = serializeSnapshotForMongo(snap, exitCode);
+
+    try {
+        const result = await Promise.race([
+            saveRuntimeShutdownReport(doc),
+            sleep(timeoutMs).then(() => null),
+        ]);
+
+        if (result?.insertedId) {
+            writeRunLineSync(buildLogLine('MONGO', [`shutdownReport insertedId=${String(result.insertedId)}`]));
+        } else {
+            writeRunLineSync(buildLogLine('MONGO', ['shutdownReport upload skipped/timeout']));
+        }
+
+        return result;
+    } catch (error) {
+        writeRunLineSync(buildLogLine('MONGO', ['shutdownReport upload failed', safeInspect(error)]));
+        return null;
+    }
+};
+
 const writeShutdownReportSync = (code) => {
     if (!initialized || shutdownReportWritten) return;
     shutdownReportWritten = true;
@@ -185,6 +278,26 @@ const writeShutdownReportSync = (code) => {
     writeRunLineSync('\n');
     writeRunLineSync(buildLogLine('SHUTDOWN', [`Relatório gerado: ${reportPath}`]));
     writeRunLineSync(reportBody);
+};
+
+export const exitWithRuntimeReport = async (code = 0, options = {}) => {
+    try {
+        writeShutdownReportSync(code);
+    } catch {
+        // ignore
+    }
+
+    try {
+        await uploadShutdownReportToMongo(code, options);
+    } catch {
+        // ignore
+    }
+
+    if (originalProcessExit) {
+        return originalProcessExit(code);
+    }
+
+    return process.exit(code);
 };
 
 const installConsoleInterceptor = () => {

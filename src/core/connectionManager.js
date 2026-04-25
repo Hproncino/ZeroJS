@@ -1,5 +1,5 @@
 import { Events } from 'discord.js';
-import { setCurrentActivity, setShutdownMeta } from '../shared/runtimeLog.js';
+import { exitWithRuntimeReport, setCurrentActivity, setShutdownMeta } from '../shared/runtimeLog.js';
 
 export const createConnectionManager = (client, options) => {
     const {
@@ -47,7 +47,7 @@ export const createConnectionManager = (client, options) => {
             console.error(`Reconexão falhou após ${maxReconnectAttempts} tentativas (${reason}). Reiniciando processo...`);
             setShutdownMeta({ reason: 'reconnectExceeded', detail: reason });
             setCurrentActivity(`connectionManager exit: reconnectExceeded reason=${reason} attempts=${reconnectAttempts}/${maxReconnectAttempts}`);
-            process.exit(1);
+            exitWithRuntimeReport(1, { timeoutMs: 4500 });
             return;
         }
 
@@ -65,7 +65,7 @@ export const createConnectionManager = (client, options) => {
             console.error('Cliente segue offline apos janela de reconexao. Reiniciando processo...');
             setShutdownMeta({ reason: 'reconnectWindowExpired', detail: reason });
             setCurrentActivity(`connectionManager exit: reconnectWindowExpired reason=${reason} attempts=${reconnectAttempts}/${maxReconnectAttempts}`);
-            process.exit(1);
+            await exitWithRuntimeReport(1, { timeoutMs: 4500 });
         }, delay);
     };
 
@@ -108,7 +108,7 @@ export const createConnectionManager = (client, options) => {
             console.error('Sessao invalidada pelo Discord. Reiniciando processo para recuperar sessao limpa...');
             setShutdownMeta({ reason: 'discordInvalidated' });
             setCurrentActivity('connectionManager exit: discord invalidated');
-            process.exit(1);
+            exitWithRuntimeReport(1, { timeoutMs: 4500 });
         });
     };
 

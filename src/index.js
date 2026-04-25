@@ -24,11 +24,11 @@ import {
     clearCurrentActivity,
     recordFatal,
     setShutdownMeta,
+    exitWithRuntimeReport,
 } from './shared/runtimeLog.js';
 
-initRuntimeLog();
-
 dotenv.config({ override: true });
+initRuntimeLog();
 
 const discordToken = process.env.TOKEN?.trim();
 
@@ -617,7 +617,7 @@ process.on('uncaughtException', (error) => {
     setShutdownMeta({ reason: 'uncaughtException' });
     console.error('Uncaught Exception:', error);
     if (connectionManager.isManualShutdown()) return;
-    process.exit(1);
+    exitWithRuntimeReport(1, { timeoutMs: 4500 });
 });
 
 let shutdownPromise = null;
@@ -632,7 +632,7 @@ const gracefulShutdown = (signal) => {
         setCurrentActivity(`shutdown signal=${signal}`);
         stopStatusRotation();
         await connectionManager.shutdown(`manual via ${signal}`);
-        process.exit(0);
+        await exitWithRuntimeReport(0, { timeoutMs: 4500 });
     })();
 
     return shutdownPromise;
@@ -641,14 +641,14 @@ const gracefulShutdown = (signal) => {
 process.on('SIGINT', () => {
     gracefulShutdown('SIGINT').catch((err) => {
         console.error('Error during graceful shutdown (SIGINT):', err);
-        process.exit(1);
+        exitWithRuntimeReport(1, { timeoutMs: 4500 });
     });
 });
 
 process.on('SIGTERM', () => {
     gracefulShutdown('SIGTERM').catch((err) => {
         console.error('Error during graceful shutdown (SIGTERM):', err);
-        process.exit(1);
+        exitWithRuntimeReport(1, { timeoutMs: 4500 });
     });
 });
 
