@@ -18,6 +18,15 @@ import { registerGlobalCommands } from './services/discord/discordCommands.js';
 import { pickRandom } from './shared/utils/pickRandomMsg.js';
 import * as ativar from './features/activation/ativar.js';
 import { createConnectionManager } from './core/connectionManager.js';
+import {
+    initRuntimeLog,
+    setCurrentActivity,
+    clearCurrentActivity,
+    recordFatal,
+    setShutdownMeta,
+} from './shared/runtimeLog.js';
+
+initRuntimeLog();
 
 dotenv.config({ override: true });
 
@@ -248,6 +257,9 @@ client.on('messageCreate', async (message) => {
         const channelId = message.channel?.id ?? 'unknown';
         const content = String(message.content ?? '');
 
+        const baseActivity = `messageCreate msgId=${message.id} user=${authorName} (${message.author?.id ?? 'unknown'}) guild=${guildName} channel=${channelId}`;
+        setCurrentActivity(baseActivity);
+
         console.log(`\n[MSG RECEBIDA] De: ${authorName} | Guild: ${guildName} | Channel ID: ${channelId} | Conteúdo: "${content.substring(0, 80)}"`);
         
         if (message.system) {
@@ -260,6 +272,7 @@ client.on('messageCreate', async (message) => {
         }
         
         const isDM = !message.guild;
+        setCurrentActivity(`${baseActivity} isDM=${isDM}`);
         console.log(`[CONFIG] isDM: ${isDM} | Channel esperado: ${process.env.CHANNEL_ID} | Channel recebido: ${channelId}`);
         
         if (!isDM && channelId !== process.env.CHANNEL_ID) {
@@ -320,11 +333,13 @@ client.on('messageCreate', async (message) => {
         const audioAttachment = pickFirstAudioAttachment(message.attachments);
         let userContent = content;
         if (audioAttachment) {
+            setCurrentActivity(`${baseActivity} step=transcribeAttachment attachment=${audioAttachment.name ?? audioAttachment.url ?? 'unknown'}`);
             await message.channel.sendTyping();
             const transcript = await transcribeAttachment(openai, audioAttachment);
             if (transcript) {
                 userContent = `[Transcrição de áudio]\n${transcript}`;
             }
+            setCurrentActivity(`${baseActivity} step=transcribeAttachment done`);
         }
 
         let hasSentFirstResponse = false;
@@ -392,6 +407,7 @@ client.on('messageCreate', async (message) => {
         let conversationLog = [{ role: 'system', content: BOT_SYSTEM_PROMPT }];
 
         try {
+            setCurrentActivity(`${baseActivity} step=buildContext`);
             // Envia typing apenas uma vez no início
             await message.channel.sendTyping();
 
@@ -485,6 +501,7 @@ client.on('messageCreate', async (message) => {
                 .replace(/[^\w\s]/gi, ''),
         });
 
+            setCurrentActivity(`${baseActivity} step=openaiRequest contextMsgs=${conversationLog.length}`);
             console.log(`[OPENAI] Entrada liberada user=${message.author.id} origem=${isDM ? 'DM' : 'Guild'} channel=${message.channel.id}`);
             console.log(`[OPENAI] Iniciando chamada com ${conversationLog.length} mensagens no contexto`);
 
@@ -505,6 +522,7 @@ client.on('messageCreate', async (message) => {
             let response = '';
             let currentChunk = '';
 
+            setCurrentActivity(`${baseActivity} step=openaiStream`);
             console.log('[STREAM] Iniciando processamento de stream');
 
             for await (const part of stream) {
@@ -541,6 +559,7 @@ client.on('messageCreate', async (message) => {
 
         // Atualiza memoria apenas a cada 3 mensagens por usuario.
         try {
+            setCurrentActivity(`${baseActivity} step=shouldPersistUserMemory`);
             const shouldPersistMemory = await shouldPersistUserMemory(
                 message.author.id,
                 message.author.username,
@@ -555,6 +574,7 @@ client.on('messageCreate', async (message) => {
                 console.log(`[Memory] Persistindo memória para ${message.author.username}...`);
                 console.log(`[Memory] Mensagem sorteada para extração: ${randomMessageForMemory}`);
 
+                setCurrentActivity(`${baseActivity} step=persistUserMemoryFromConversation`);
                 await persistUserMemoryFromConversation(
                     openai,
                     message.author.id,
@@ -582,14 +602,19 @@ client.on('messageCreate', async (message) => {
         }
     } catch (error) {
         console.error('[messageCreate] Falha não tratada no início do fluxo:', error);
+    } finally {
+        clearCurrentActivity();
     }
 });
 
 process.on('unhandledRejection', (reason) => {
+    recordFatal('unhandledRejection', reason);
     console.error('Unhandled Promise Rejection:', reason);
 });
 
 process.on('uncaughtException', (error) => {
+    recordFatal('uncaughtException', error);
+    setShutdownMeta({ reason: 'uncaughtException' });
     console.error('Uncaught Exception:', error);
     if (connectionManager.isManualShutdown()) return;
     process.exit(1);
@@ -603,6 +628,8 @@ const gracefulShutdown = (signal) => {
     }
 
     shutdownPromise = (async () => {
+        setShutdownMeta({ reason: 'manual', signal });
+        setCurrentActivity(`shutdown signal=${signal}`);
         stopStatusRotation();
         await connectionManager.shutdown(`manual via ${signal}`);
         process.exit(0);
