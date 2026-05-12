@@ -13,3 +13,6 @@ discloud/import/1740165857917/discloud.config
 img/Imagens
 node_modules/
 logs/
+skills/
+.qwen
+.agents
