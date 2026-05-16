@@ -17,6 +17,7 @@ import {
 import { registerGlobalCommands } from './services/discord/discordCommands.js';
 import { pickRandom } from './shared/utils/pickRandomMsg.js';
 import * as ativar from './features/activation/ativar.js';
+import * as memoriaVer from './features/memory/ver.js';
 import { createConnectionManager } from './core/connectionManager.js';
 import {
     initRuntimeLog,
@@ -118,20 +119,29 @@ client.once(Events.ClientReady, async () => {
         await registerGlobalCommands(
             discordToken,
             client.application.id,
-            [ativar.data.toJSON()]
+            [ativar.data.toJSON(), memoriaVer.data.toJSON()]
         );
-        console.log('Slash command /ativar-dm registrado com sucesso.');
+        console.log('Slash commands /ativar-dm e /memoria-ver registrados com sucesso.');
     } catch (error) {
         console.error('Erro ao registrar slash command:', error);
     }
 });
 
 client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isChatInputCommand() || interaction.commandName !== ativar.data.name) return;
+    if (!interaction.isChatInputCommand()) return;
+
     try {
-        await ativar.execute(interaction);
+        if (interaction.commandName === ativar.data.name) {
+            await ativar.execute(interaction);
+            return;
+        }
+
+        if (interaction.commandName === memoriaVer.data.name) {
+            await memoriaVer.execute(interaction);
+            return;
+        }
     } catch (error) {
-        console.error('Erro ao processar /ativar-dm:', error);
+        console.error(`Erro ao processar /${interaction.commandName}:`, error);
         if (!interaction.replied && !interaction.deferred) {
             await interaction.reply({
                 content: 'Não consegui acessar o banco agora. Tenta novamente em instantes.',
