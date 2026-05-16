@@ -154,34 +154,27 @@ client.on('interactionCreate', async (interaction) => {
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,});
 
-// Função para obter imagens locais (ignora subpastas)
+// Função para obter imagens locais somente da pasta Imagens
 const getLocalImages = () => {
-    const imgFolder = './img';
-    const ignoredFolders = ['exemplos']; // Pastas a ignorar
+    const imgFolder = './img/Imagens';
     
     try {
         if (!fs.existsSync(imgFolder)) {
-            console.log('Pasta ./img/ não encontrada.');
+            console.log('Pasta ./img/Imagens não encontrada.');
             return [];
         }
         
         const imageFiles = [];
         
-        // Função recursiva para buscar imagens
-        const scanDirectory = (dir, baseDir = imgFolder) => {
+        // Busca imagens apenas dentro de ./img/Imagens
+        const scanDirectory = (dir) => {
             const items = fs.readdirSync(dir, { withFileTypes: true });
             
             for (const item of items) {
                 const fullPath = path.join(dir, item.name);
                 
                 if (item.isDirectory()) {
-                    // Ignora pastas específicas
-                    const relativePath = path.relative(baseDir, fullPath);
-                    const folderName = relativePath.split(path.sep)[0];
-                    
-                    if (!ignoredFolders.includes(folderName.toLowerCase())) {
-                        scanDirectory(fullPath, baseDir);
-                    }
+                    scanDirectory(fullPath);
                 } else if (item.isFile()) {
                     // Verifica se é uma imagem
                     const ext = path.extname(item.name).toLowerCase();
