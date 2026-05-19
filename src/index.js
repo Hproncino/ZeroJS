@@ -458,6 +458,7 @@ client.on('messageCreate', async (message) => {
             .filter((msg) => msg.author.id === message.author.id)
             .filter((msg) => !msg.system)
             .filter((msg) => !msg.content.startsWith('!'))
+            .filter((msg) => msg.id !== message.id)
             .sort((a, b) => b.createdTimestamp - a.createdTimestamp)
             .slice(0, 10);
 
@@ -469,6 +470,7 @@ client.on('messageCreate', async (message) => {
         // contexto de 10 mensagens anteriores
         const prevMessages = [...prevMessagesRaw.values()]
             .filter((msg) => msg.author.id === client.user.id || msg.author.id === message.author.id)
+            .filter((msg) => msg.id !== message.id)
             .reverse();
 
         prevMessages.forEach((msg) => {
