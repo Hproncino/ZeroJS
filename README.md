@@ -1,6 +1,6 @@
 # ZeroJS
 
-ZeroJS é um bot do Discord em Node.js com integração à OpenAI para conversas inteligentes, respostas em tempo real e suporte a transcrição de áudio.
+ZeroJS é um bot do Discord em Node.js com integração à OpenAI para conversas inteligentes, respostas em tempo real, transcrição de áudio e interpretação de imagens anexadas.
 
 Guia de instalação das tecnologias: [README.instalacao.md](./README.instalacao.md)
 
@@ -47,6 +47,8 @@ Guia de instalação das tecnologias: [README.instalacao.md](./README.instalacao
 - Janela de contexto com até 10 mensagens anteriores para manter continuidade da conversa.
 - Filtro de mensagens para ignorar bots, mensagens de sistema e comandos com prefixo `!`.
 - Presença dinâmica no Discord com rotação de status.
+- Leitura de anexos de imagem enviados pelo usuário para descrever o que aparece na imagem.
+- Transcrição de anexos de áudio antes de enviar o contexto para a OpenAI.
 
 ## Features implementadas
 
@@ -55,6 +57,15 @@ Guia de instalação das tecnologias: [README.instalacao.md](./README.instalacao
 - Slash Command de ativação para liberar o acesso em mensagens diretas.
 - Registro de usuários ativados em MongoDB.
 - Envio opcional de imagem aleatória local junto à resposta final.
+- Interpretação de imagens enviadas pelo usuário com análise multimodal via OpenAI.
+
+## Consciência do bot
+
+- O bot mantém memória de usuário em MongoDB e usa isso como contexto suave nas conversas.
+- Em diálogos recentes, ele considera o histórico da conversa para preservar continuidade.
+- Ao receber uma imagem, ele tenta descrever apenas o que está visível e evita inventar detalhes quando a imagem está ruim ou ambígua.
+- O bot não gera imagens; ele apenas interpreta imagens enviadas e pode responder com imagens locais aleatórias quando isso estiver habilitado.
+- Em áudio, ele transcreve o anexo antes de responder.
 
 ## Observações
 
