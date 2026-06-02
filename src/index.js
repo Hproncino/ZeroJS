@@ -154,6 +154,81 @@ client.on('interactionCreate', async (interaction) => {
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,});
 
+const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff'];
+
+const looksLikeImageAttachment = (attachment) => {
+    if (!attachment) return false;
+
+    const name = String(attachment.name || '').toLowerCase();
+    const contentType = String(attachment.contentType || attachment.content_type || '').toLowerCase();
+
+    if (contentType.startsWith('image/')) return true;
+
+    return IMAGE_EXTENSIONS.some((ext) => name.endsWith(`.${ext}`));
+};
+
+const pickImageAttachments = (attachments) => {
+    if (!attachments || attachments.size === 0) return [];
+
+    const images = [];
+    for (const attachment of attachments.values()) {
+        if (looksLikeImageAttachment(attachment)) {
+            images.push(attachment);
+        }
+    }
+
+    return images;
+};
+
+const attachmentToDataUrl = async (attachment) => {
+    if (!attachment?.url) return null;
+
+    try {
+        const response = await fetch(attachment.url);
+        if (!response.ok) {
+            console.error(`Falha ao baixar imagem: ${response.status}`);
+            return null;
+        }
+
+        const contentType = attachment.contentType
+            || attachment.content_type
+            || response.headers.get('content-type')
+            || 'image/png';
+        const buffer = Buffer.from(await response.arrayBuffer());
+        return `data:${contentType};base64,${buffer.toString('base64')}`;
+    } catch (error) {
+        console.error('Erro ao preparar imagem para análise:', error);
+        return null;
+    }
+};
+
+const buildUserMessageContent = (textContent, imageDataUrls) => {
+    const parts = [];
+
+    if (textContent) {
+        parts.push({
+            type: 'text',
+            text: textContent,
+        });
+    }
+
+    for (const imageDataUrl of imageDataUrls) {
+        if (!imageDataUrl) continue;
+
+        parts.push({
+            type: 'image_url',
+            image_url: {
+                url: imageDataUrl,
+            },
+        });
+    }
+
+    if (parts.length === 0) return '';
+    if (parts.length === 1 && parts[0].type === 'text') return textContent;
+
+    return parts;
+};
+
 // Função para obter imagens locais somente da pasta Imagens
 const getLocalImages = () => {
     const imgFolder = './img/Imagens';
@@ -334,15 +409,30 @@ client.on('messageCreate', async (message) => {
 
         // se houver uma mensagem de audio, roda a transcrição
         const audioAttachment = pickFirstAudioAttachment(message.attachments);
-        let userContent = content;
+        const imageAttachments = pickImageAttachments(message.attachments).slice(0, 3);
+        let userTextContent = content;
         if (audioAttachment) {
             setCurrentActivity(`${baseActivity} step=transcribeAttachment attachment=${audioAttachment.name ?? audioAttachment.url ?? 'unknown'}`);
             await message.channel.sendTyping();
             const transcript = await transcribeAttachment(openai, audioAttachment);
             if (transcript) {
-                userContent = `[Transcrição de áudio]\n${transcript}`;
+                userTextContent = [userTextContent, `[Transcrição de áudio]\n${transcript}`]
+                    .filter(Boolean)
+                    .join('\n\n');
             }
             setCurrentActivity(`${baseActivity} step=transcribeAttachment done`);
+        }
+
+        const imageDataUrls = imageAttachments.length > 0
+            ? (await Promise.all(imageAttachments.map((attachment) => attachmentToDataUrl(attachment))))
+                .filter(Boolean)
+            : [];
+
+        const userContent = buildUserMessageContent(userTextContent, imageDataUrls);
+
+        if (imageAttachments.length > 0) {
+            setCurrentActivity(`${baseActivity} step=prepareImageContext images=${imageAttachments.length}`);
+            console.log(`[IMG] ${imageAttachments.length} imagem(ns) detectada(s) para análise.`);
         }
 
         let hasSentFirstResponse = false;
@@ -452,7 +542,7 @@ client.on('messageCreate', async (message) => {
             memorySourceCandidates.push(cleaned);
         };
 
-        addMemoryCandidate(userContent);
+        addMemoryCandidate(userTextContent || (imageAttachments.length > 0 ? '[Imagem enviada pelo usuário]' : ''));
 
         const recentUserMessages = [...prevMessagesRaw.values()]
             .filter((msg) => msg.author.id === message.author.id)
