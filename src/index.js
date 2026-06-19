@@ -64,19 +64,30 @@ client.on(Events.Raw, (packet) => {
     if (packet?.d?.guild_id) return;
     if (packet?.d?.author?.bot) return;
 
+    const normalizeRawAttachment = (attachment) => ({
+        ...attachment,
+        name: attachment?.name || attachment?.filename || '',
+        contentType: attachment?.contentType || attachment?.content_type || '',
+        url: attachment?.url || attachment?.proxy_url || '',
+    });
+
     (async () => {
         try {
             const channel = await client.channels.fetch(channelId);
             if (!channel) return;
 
             const attachments = new Map(
-                (packet.d.attachments || []).map((attachment) => [attachment.id, attachment])
+                (packet.d.attachments || []).map((attachment) => {
+                    const normalizedAttachment = normalizeRawAttachment(attachment);
+                    return [normalizedAttachment.id, normalizedAttachment];
+                })
             );
 
             const syntheticMessage = {
                 id: packet.d.id,
                 system: false,
                 guild: null,
+                createdTimestamp: packet.d.timestamp ? Date.parse(packet.d.timestamp) : Date.now(),
                 content: packet.d.content || '',
                 attachments,
                 author: {
@@ -91,9 +102,9 @@ client.on(Events.Raw, (packet) => {
                     }
 
                     const nextPayload = { ...payload };
-                    if (!nextPayload.reply) {
-                        nextPayload.reply = {
-                            messageReference: packet.d.id,
+                    if (!nextPayload.messageReference) {
+                        nextPayload.messageReference = {
+                            messageId: packet.d.id,
                             failIfNotExists: false,
                         };
                     }
