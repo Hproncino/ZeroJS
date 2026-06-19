@@ -62,6 +62,7 @@ client.on(Events.Raw, (packet) => {
     console.log(`[RAW] MESSAGE_CREATE guild=${guildId} channel=${channelId} author=${authorId}`);
 
     if (packet?.d?.guild_id) return;
+    if (packet?.d?.author?.bot) return;
 
     (async () => {
         try {
