@@ -4,6 +4,8 @@ import { OpenAI } from 'openai';
 import { pickFirstAudioAttachment, transcribeAttachment } from './services/audio/voiceToText.js';
 import fs from 'fs';
 import path from 'path';
+import https from 'https';
+import http from 'http';
 import { isRegistered, shouldPersistUserMemory } from './services/users.js';
 import {
     getUserMemorySystemMessage,
@@ -163,8 +165,67 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
+const httpsAgent = new https.Agent({ keepAlive: true, timeout: 70000 });
+
+const stableFetch = (url, options = {}) => new Promise((resolve, reject) => {
+    const parsedUrl = new URL(url);
+    const isHttps = parsedUrl.protocol === 'https:';
+    const agent = isHttps ? httpsAgent : new http.Agent({ keepAlive: true });
+
+    const requestOptions = {
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port || (isHttps ? 443 : 80),
+        path: parsedUrl.pathname + parsedUrl.search,
+        method: options.method || 'GET',
+        headers: { ...options.headers },
+        agent,
+        timeout: 65000,
+    };
+
+    if (options.body && typeof options.body === 'string') {
+        requestOptions.headers['Content-Length'] = Buffer.byteLength(options.body);
+    }
+
+    const lib = isHttps ? https : http;
+    const req = lib.request(requestOptions, (res) => {
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => {
+            const body = Buffer.concat(chunks);
+            resolve({
+                ok: res.statusCode >= 200 && res.statusCode < 300,
+                status: res.statusCode,
+                statusText: res.statusMessage || '',
+                headers: {
+                    get: (name) => res.headers[name.toLowerCase()] || null,
+                    forEach: (cb) => { for (const [k, v] of Object.entries(res.headers)) cb(v, k, res.headers); },
+                    entries: () => Object.entries(res.headers)[Symbol.iterator](),
+                    keys: () => Object.keys(res.headers)[Symbol.iterator](),
+                    has: (name) => name.toLowerCase() in res.headers,
+                },
+                json: async () => JSON.parse(body.toString()),
+                text: async () => body.toString(),
+                arrayBuffer: async () => body.buffer,
+                body: null,
+            });
+        });
+    });
+
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
+
+    if (options.body && typeof options.body === 'string') {
+        req.write(options.body);
+    }
+    req.end();
+});
+
 const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,});
+    apiKey: process.env.OPENAI_API_KEY,
+    maxRetries: 3,
+    timeout: 70000,
+    fetch: stableFetch,
+});
 
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff'];
 
@@ -476,7 +537,7 @@ client.on('messageCreate', async (message) => {
             }
         };
 
-        const sendChunks = async (text) => {
+        const sendChunks = async (text, files = []) => {
             if (typeof text !== 'string') {
                 console.error('Texto provido não é do tipo string.');
                 return;
@@ -505,7 +566,7 @@ client.on('messageCreate', async (message) => {
 
             // Usa a mesma regra global: primeira resposta vira reply, restante vira send.
             for (let i = 0; i < chunks.length; i++) {
-                await sendResponseChunk(chunks[i]);
+                await sendResponseChunk(chunks[i], i === 0 ? files : []);
             }
         };
 
@@ -612,57 +673,32 @@ client.on('messageCreate', async (message) => {
             console.log(`[OPENAI] Entrada liberada user=${message.author.id} origem=${isDM ? 'DM' : 'Guild'} channel=${message.channel.id}`);
             console.log(`[OPENAI] Iniciando chamada com ${conversationLog.length} mensagens no contexto`);
 
-            const stream = await openaiRequestWithTimeout(
+            const completion = await openaiRequestWithTimeout(
                 openai.chat.completions.create({
                     model: 'gpt-4o-2024-11-20',
                     messages: conversationLog,
                     max_completion_tokens: 2048,
-                    stream: true,
+                    stream: false,
                     temperature: 0.8,
                     top_p: 0.95,
                 }),
-                45000
+                60000
             );
 
-            console.log('[OPENAI] Stream recebido com sucesso, iniciando leitura');
+            console.log('[OPENAI] Resposta recebida com sucesso');
 
-            let response = '';
-            let currentChunk = '';
+            const response = completion.choices[0]?.message?.content || '';
+            console.log(`[OPENAI] Resposta gerada: ${response.length} caracteres`);
 
-            setCurrentActivity(`${baseActivity} step=openaiStream`);
-            console.log('[STREAM] Iniciando processamento de stream');
+            const sendWithImage = shouldSendRandomImage();
+            const randomImage = sendWithImage ? getRandomImage() : null;
 
-            for await (const part of stream) {
-                const contentPart = part.choices[0]?.delta?.content || '';
-                if (contentPart) {
-                    response += contentPart;
-                    currentChunk += contentPart;
-
-                    const shouldSend = currentChunk.length >= 1500 && /[.!?\n]$/.test(currentChunk.trim());
-
-                    if (shouldSend) {
-                        console.log(`[STREAM] Enviando chunk com ${currentChunk.length} caracteres`);
-                        await sendResponseChunk(currentChunk);
-                        currentChunk = '';
-                    }
-                }
+            if (randomImage) {
+                const attachment = new AttachmentBuilder(randomImage);
+                await sendChunks(response, [attachment]);
+            } else {
+                await sendChunks(response);
             }
-
-            console.log(`[STREAM] Stream finalizado. Resposta total: ${response.length} caracteres`);
-
-            if (currentChunk.length > 0) {
-                const sendWithImage = shouldSendRandomImage();
-                const randomImage = sendWithImage ? getRandomImage() : null;
-
-                if (randomImage) {
-                    const attachment = new AttachmentBuilder(randomImage);
-                    await sendResponseChunk(currentChunk, [attachment]);
-                } else {
-                    await sendResponseChunk(currentChunk);
-                }
-            }
-
-            console.log(`Resposta completa: ${response}`);
 
         // Atualiza memoria apenas a cada 3 mensagens por usuario.
         try {
