@@ -67,8 +67,30 @@ client.on(Events.Raw, (packet) => {
 
     (async () => {
         try {
-            const channel = await client.channels.fetch(channelId);
-            if (!channel) return;
+            const resolveDmChannel = async () => {
+                const cachedChannel = client.channels.cache.get(channelId);
+                if (cachedChannel) return cachedChannel;
+
+                return client.channels.fetch(channelId);
+            };
+
+            const lazyDmChannel = {
+                id: channelId,
+                sendTyping: async () => {
+                    const channel = await resolveDmChannel();
+                    return channel?.sendTyping?.();
+                },
+                send: async (...args) => {
+                    const channel = await resolveDmChannel();
+                    return channel.send(...args);
+                },
+                messages: {
+                    fetch: async (...args) => {
+                        const channel = await resolveDmChannel();
+                        return channel.messages.fetch(...args);
+                    },
+                },
+            };
 
             const attachments = new Map(
                 (packet.d.attachments || []).map((attachment) => [attachment.id, attachment])
@@ -85,10 +107,10 @@ client.on(Events.Raw, (packet) => {
                     username: packet.d.author?.username || 'unknown',
                     bot: Boolean(packet.d.author?.bot),
                 },
-                channel,
+                channel: lazyDmChannel,
                 reply: async (payload) => {
                     if (typeof payload === 'string') {
-                        return channel.send(payload);
+                        return lazyDmChannel.send(payload);
                     }
 
                     const nextPayload = { ...payload };
@@ -99,7 +121,7 @@ client.on(Events.Raw, (packet) => {
                         };
                     }
 
-                    return channel.send(nextPayload);
+                    return lazyDmChannel.send(nextPayload);
                 },
             };
 
@@ -531,28 +553,39 @@ client.on('messageCreate', async (message) => {
                 return;
             }
 
-            const phrases = text.match(/[^.!?\n]+[.!?\n]?/g) || [text];
+            const lines = text.split('\n');
             const chunks = [];
             let buffer = '';
 
-            for (const phrase of phrases) {
-                if ((buffer + phrase).length > 2000) {
+            for (const line of lines) {
+                const candidate = buffer.length > 0 ? buffer + '\n' + line : line;
+
+                if (candidate.length > 2000) {
                     if (buffer.length > 0) {
                         chunks.push(buffer);
-                        buffer = '';
                     }
-                    // Se uma única frase for maior que o limite, divida-a de maneira forçada.
-                    if (phrase.length > 2000) {
-                        const hard = phrase.match(/(.|[\r\n]){1,2000}/g) || [phrase];
-                        for (const part of hard) chunks.push(part);
+
+                    if (line.length > 2000) {
+                        const hard = line.match(/(.|[\r\n]){1,2000}/g) || [line];
+                        for (let i = 0; i < hard.length; i++) {
+                            if (i < hard.length - 1) {
+                                chunks.push(hard[i]);
+                            } else {
+                                buffer = hard[i];
+                            }
+                        }
                         continue;
                     }
+
+                    buffer = line;
+                    continue;
                 }
-                buffer += phrase;
+
+                buffer = candidate;
             }
+
             if (buffer.length > 0) chunks.push(buffer);
 
-            // Usa a mesma regra global: primeira resposta vira reply, restante vira send.
             for (let i = 0; i < chunks.length; i++) {
                 await sendResponseChunk(chunks[i], i === 0 ? files : []);
             }
