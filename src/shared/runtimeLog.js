@@ -98,6 +98,27 @@ export const setCurrentActivity = (text) => {
     setActivityInternal(text);
 };
 
+export const recordPersonaTransition = ({ userId, interactionCount, previous, next, analysis, plan }) => {
+    console.log('[PERSONA_TRANSITION]', {
+        userId: String(userId || 'unknown'),
+        interactionCount: Number(interactionCount) || 0,
+        emotional: { before: previous?.emotionalState || null, after: next?.emotionalState || null },
+        relationship: { before: previous?.relationshipState || null, after: next?.relationshipState || null },
+        signals: {
+            praise: Number(analysis?.praise) || 0,
+            provocation: Number(analysis?.provocation) || 0,
+            trustSignal: Number(analysis?.trustSignal) || 0,
+            interesting: Number(analysis?.interesting) || 0,
+            hasImage: Boolean(analysis?.hasImage),
+            hasAudio: Boolean(analysis?.hasAudio),
+        },
+        plan: {
+            responseMode: plan?.responseMode || 'unknown',
+            secondaryBehaviors: Array.isArray(plan?.secondaryBehaviors) ? plan.secondaryBehaviors : [],
+        },
+    });
+};
+
 export const clearCurrentActivity = () => {
     currentActivity = null;
 };

@@ -16,6 +16,7 @@ import {
     restartStatusRotation,
     stopStatusRotation,
 } from './core/botPersona.js';
+import { preparePersonaTurn, persistPersonaTurn } from './services/persona/personaStateService.js';
 import { registerGlobalCommands } from './services/discord/discordCommands.js';
 import { pickRandom } from './shared/utils/pickRandomMsg.js';
 import * as ativar from './features/activation/ativar.js';
@@ -612,6 +613,7 @@ client.on('messageCreate', async (message) => {
 
             let prevMessagesRaw = new Map();
             let memoryPrompt = '';
+            let personaTurn = null;
 
             const prevMessagesPromise = message.channel.messages
                 .fetch({ limit: 10 })
@@ -629,6 +631,24 @@ client.on('messageCreate', async (message) => {
                 memoryPromptPromise,
             ]);
             console.log(`[CTX] Histórico carregado: ${prevMessagesRaw.size} mensagens (${isDM ? 'DM' : 'Guild'}) | memória carregada: ${Boolean(memoryPrompt)}`);
+
+            try {
+                personaTurn = await preparePersonaTurn({
+                    userId: message.author.id,
+                    username: message.author.username,
+                    text: userTextContent,
+                    history: [...prevMessagesRaw.values()].map((item) => ({
+                        role: item.author?.id === message.author.id ? 'user' : 'assistant',
+                        content: item.content,
+                    })),
+                    hasImage: imageAttachments.length > 0,
+                    hasAudio: Boolean(audioAttachment),
+                });
+                conversationLog.push({ role: 'system', content: personaTurn.contextMessage });
+                console.log(`[PERSONA] mood=${personaTurn.emotionalState.mood} mode=${personaTurn.plan.responseMode} behaviors=${personaTurn.plan.secondaryBehaviors.length}`);
+            } catch (personaError) {
+                console.error('Falha ao preparar estado da persona:', personaError);
+            }
 
             if (memoryPrompt) {
                 conversationLog.push({ role: 'system', content: memoryPrompt });
@@ -731,6 +751,15 @@ client.on('messageCreate', async (message) => {
                 await sendChunks(response, [attachment]);
             } else {
                 await sendChunks(response);
+            }
+
+            if (personaTurn) {
+                try {
+                    setCurrentActivity(`${baseActivity} step=persistPersonaTurn`);
+                    await persistPersonaTurn(personaTurn, response);
+                } catch (personaPersistError) {
+                    console.error('Falha ao persistir estado da persona:', personaPersistError);
+                }
             }
 
         // Atualiza memoria apenas a cada 3 mensagens por usuario.

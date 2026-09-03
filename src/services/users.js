@@ -6,7 +6,7 @@ dotenv.config({ override: true });
 let client;
 let collection;
 
-const getCollection = async () => {
+export const getCollection = async () => {
     if (!client) {
         if (!process.env.MONGODB_URI) {
             throw new Error('MONGODB_URI não configurada no .env');
