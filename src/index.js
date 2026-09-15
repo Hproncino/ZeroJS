@@ -16,7 +16,7 @@ import {
     restartStatusRotation,
     stopStatusRotation,
 } from './core/botPersona.js';
-import { preparePersonaTurn, persistPersonaTurn } from './services/persona/personaStateService.js';
+import { acquirePersonaLock, preparePersonaTurn, persistPersonaTurn } from './services/persona/personaStateService.js';
 import { registerGlobalCommands } from './services/discord/discordCommands.js';
 import { pickRandom } from './shared/utils/pickRandomMsg.js';
 import * as ativar from './features/activation/ativar.js';
@@ -605,11 +605,13 @@ client.on('messageCreate', async (message) => {
         };
 
         let conversationLog = [{ role: 'system', content: BOT_SYSTEM_PROMPT }];
+        let releasePersonaLock = null;
 
         try {
             setCurrentActivity(`${baseActivity} step=buildContext`);
             // Envia typing apenas uma vez no início
             await message.channel.sendTyping();
+            releasePersonaLock = await acquirePersonaLock(message.author.id);
 
             let prevMessagesRaw = new Map();
             let memoryPrompt = '';
@@ -804,6 +806,9 @@ client.on('messageCreate', async (message) => {
             } catch (replyError) {
                 console.error('Falha ao enviar mensagem de erro para o usuario:', replyError);
             }
+        } finally {
+            releasePersonaLock?.();
+            releasePersonaLock = null;
         }
     } catch (error) {
         console.error('[messageCreate] Falha não tratada no início do fluxo:', error);

@@ -12,11 +12,36 @@ const DEFAULT_OPINIONS = Object.freeze([
     'Discordar com argumentos é mais útil do que concordar por conveniência.',
 ]);
 
+const personaLocks = new Map();
+
+export const acquirePersonaLock = async (userId) => {
+    const key = String(userId || 'unknown');
+    const previous = personaLocks.get(key) || Promise.resolve();
+    let unlock;
+    const current = new Promise((resolve) => { unlock = resolve; });
+    personaLocks.set(key, current);
+    await previous;
+
+    let released = false;
+    return () => {
+        if (released) return;
+        released = true;
+        unlock();
+        if (personaLocks.get(key) === current) personaLocks.delete(key);
+    };
+};
+
 export const DEFAULT_EMOTIONAL_STATE = Object.freeze({
     mood: 'curious', energy: 0.72, warmth: 0.41, irritation: 0.12, confidence: 0.91, curiosity: 0.83,
 });
 
 const ALLOWED_MOODS = new Set(['curious', 'irritated', 'calm', 'focused', 'playful', 'tired']);
+
+const normalizeOpinions = (opinions) => (Array.isArray(opinions) ? opinions : [])
+    .filter((opinion) => typeof opinion === 'string')
+    .map((opinion) => opinion.replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 240))
+    .filter(Boolean)
+    .slice(0, 12);
 
 export const DEFAULT_RELATIONSHIP_STATE = Object.freeze({
     familiarity: 0, trust: 0.35, respect: 0.5, affection: 0.2, annoyance: 0.08,
@@ -44,22 +69,31 @@ export const loadPersonaState = async (userId, username) => {
         emotionalState: normalizeState(user?.personaEmotionalState, DEFAULT_EMOTIONAL_STATE),
         relationshipState: normalizeState(user?.personaRelationshipState, DEFAULT_RELATIONSHIP_STATE),
         episodes: Array.isArray(user?.personaEpisodes) ? user.personaEpisodes.slice(-40) : [],
-        opinions: Array.isArray(user?.personaOpinions) && user.personaOpinions.length
-            ? user.personaOpinions.slice(0, 12)
+        opinions: normalizeOpinions(user?.personaOpinions).length
+            ? normalizeOpinions(user.personaOpinions)
             : [...DEFAULT_OPINIONS],
         interactionCount: Number(user?.personaInteractionCount) || 0,
     };
 };
 
 export const updatePersonaState = ({ emotionalState, relationshipState, analysis }) => {
+    const nextEnergy = blend(emotionalState.energy, analysis.longMessage ? -0.12 : -0.015, 0.9);
+    const nextIrritation = blend(emotionalState.irritation, analysis.provocation * 0.12 - analysis.praise * 0.03, 0.82);
+    const nextCuriosity = blend(emotionalState.curiosity, analysis.interesting * 0.08 + analysis.novelty * 0.03 - 0.01, 0.86);
     const nextEmotional = {
         ...emotionalState,
-        mood: analysis.provocation > 0 ? 'irritated' : analysis.interesting > 0 ? 'curious' : emotionalState.mood,
-        energy: blend(emotionalState.energy, analysis.longMessage ? -0.12 : -0.015, 0.9),
+        mood: analysis.provocation > 0 && nextIrritation >= 0.3
+            ? 'irritated'
+            : analysis.longMessage && nextEnergy <= 0.35
+                ? 'tired'
+                : analysis.interesting > 0 && nextCuriosity >= 0.65
+                    ? 'curious'
+                    : emotionalState.mood,
+        energy: nextEnergy,
         warmth: blend(emotionalState.warmth, analysis.praise * 0.08 - analysis.provocation * 0.05),
-        irritation: blend(emotionalState.irritation, analysis.provocation * 0.12 - analysis.praise * 0.03, 0.82),
+        irritation: nextIrritation,
         confidence: blend(emotionalState.confidence, analysis.trustSignal * 0.05, 0.9),
-        curiosity: blend(emotionalState.curiosity, analysis.interesting * 0.08 + analysis.novelty * 0.03 - 0.01, 0.86),
+        curiosity: nextCuriosity,
     };
     const nextRelationship = {
         familiarity: blend(relationshipState.familiarity, 0.035, 0.96),
@@ -77,7 +111,7 @@ const findRelevantEpisodes = (episodes, text) => {
     return episodes
         .filter((episode) => typeof episode?.event === 'string')
         .map((episode) => ({ episode, score: terms.filter((term) => episode.event.toLowerCase().includes(term)).length }))
-        .filter(({ score, episode }) => score > 0 || Number(episode.importance) >= 0.9)
+        .filter(({ score }) => score > 0)
         .sort((a, b) => b.score - a.score || b.episode.importance - a.episode.importance)
         .slice(0, 3)
         .map(({ episode }) => episode);
@@ -117,23 +151,36 @@ export const persistPersonaTurn = async (turn, response) => {
         timestamp: new Date().toISOString(),
     };
 
-    await collection.updateOne(
-        { id: turn.userId },
-        {
-            $set: {
-                id: turn.userId,
-                username: turn.username,
-                personaEmotionalState: turn.emotionalState,
-                personaRelationshipState: turn.relationshipState,
-                personaOpinions: turn.opinions,
-                personaLastUpdatedAt: episode.timestamp,
+    try {
+        await collection.updateOne(
+            { id: turn.userId },
+            {
+                $set: {
+                    id: turn.userId,
+                    username: turn.username,
+                    personaEmotionalState: turn.emotionalState,
+                    personaRelationshipState: turn.relationshipState,
+                    personaOpinions: turn.opinions,
+                    personaLastUpdatedAt: episode.timestamp,
+                },
+                $push: { personaEpisodes: { $each: [episode], $slice: -40 } },
+                $inc: { personaInteractionCount: 1 },
+                $setOnInsert: { registeredAt: episode.timestamp },
             },
-            $push: { personaEpisodes: { $each: [episode], $slice: -40 } },
-            $inc: { personaInteractionCount: 1 },
-            $setOnInsert: { registeredAt: episode.timestamp },
-        },
-        { upsert: true }
-    );
+            { upsert: true }
+        );
+    } catch (error) {
+        recordPersonaTransition({
+            userId: turn.userId,
+            interactionCount: turn.interactionCount + 1,
+            previous: turn.previousState,
+            next: turn,
+            analysis: turn.analysis,
+            plan: turn.plan,
+            persistence: 'failed',
+        });
+        throw error;
+    }
 
     recordPersonaTransition({
         userId: turn.userId,
@@ -142,5 +189,6 @@ export const persistPersonaTurn = async (turn, response) => {
         next: turn,
         analysis: turn.analysis,
         plan: turn.plan,
+        persistence: 'saved',
     });
 };

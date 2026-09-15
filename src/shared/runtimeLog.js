@@ -98,10 +98,11 @@ export const setCurrentActivity = (text) => {
     setActivityInternal(text);
 };
 
-export const recordPersonaTransition = ({ userId, interactionCount, previous, next, analysis, plan }) => {
+export const recordPersonaTransition = ({ userId, interactionCount, previous, next, analysis, plan, persistence = 'unknown' }) => {
     console.log('[PERSONA_TRANSITION]', {
         userId: String(userId || 'unknown'),
         interactionCount: Number(interactionCount) || 0,
+        persistence,
         emotional: { before: previous?.emotionalState || null, after: next?.emotionalState || null },
         relationship: { before: previous?.relationshipState || null, after: next?.relationshipState || null },
         signals: {
