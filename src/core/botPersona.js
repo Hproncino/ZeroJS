@@ -43,12 +43,20 @@ Known user priority:
 
 const BOT_STATUS_ROTATION = [
     {
-        name: 'Online? nah, so te espionando',
+        name: 'Online? nah, só te espionando',
         type: ActivityType.Watching,
     },
     {
         name: 'Sarcasmo: meu idioma nativo',
         type: ActivityType.Listening,
+    },
+    {
+        name: 'Jogando xadrez 4D com o universo',
+        type: ActivityType.Playing,
+    },
+    {
+        name: 'Calculando seu valor em gacha',
+        type: ActivityType.Watching,
     },
 ];
 
