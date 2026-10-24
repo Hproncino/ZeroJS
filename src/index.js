@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import { Client, GatewayIntentBits, Partials, AttachmentBuilder, MessageFlags, Events } from 'discord.js';
 import { OpenAI } from 'openai';
 import { pickFirstAudioAttachment, transcribeAttachment } from './services/audio/voiceToText.js';
+import { appendDocumentReference, ingestDocumentAttachments, selectRelevantDocumentContext } from './services/documentContextService.js';
 import fs from 'fs';
 import path from 'path';
 import https from 'https';
@@ -524,6 +525,22 @@ client.on('messageCreate', async (message) => {
                 .filter(Boolean)
             : [];
 
+        const documentResults = await ingestDocumentAttachments(
+            message.attachments,
+            `${message.guild?.id || 'dm'}:${message.channel.id}:${message.author.id}`
+        );
+        if (documentResults.length > 0) {
+            const processed = documentResults.filter((item) => item.ok).map((item) => item.name);
+            const failed = documentResults.filter((item) => !item.ok);
+            const status = [
+                processed.length ? `Documentos lidos: ${processed.join(', ')}.` : '',
+                failed.length ? `Não foi possível ler ${failed.map((item) => `${item.name} (${item.reason})`).join('; ')}.` : '',
+            ].filter(Boolean).join(' ');
+            if (status) {
+                userTextContent = [userTextContent, `[Status dos anexos: ${status}]`].filter(Boolean).join('\n\n');
+            }
+        }
+
         const userContent = buildUserMessageContent(userTextContent, imageDataUrls);
 
         if (imageAttachments.length > 0) {
@@ -715,6 +732,14 @@ client.on('messageCreate', async (message) => {
                 });
             }
         });
+
+        const documentContext = await selectRelevantDocumentContext(
+            openai,
+            `${message.guild?.id || 'dm'}:${message.channel.id}:${message.author.id}`,
+            userTextContent,
+            conversationLog.filter((item) => item.role === 'user' || item.role === 'assistant')
+        );
+        appendDocumentReference(conversationLog, documentContext);
 
         conversationLog.push({
             role: 'user',

@@ -56,11 +56,11 @@ const normalizeState = (state, defaults) => Object.fromEntries(
     ])
 );
 
-export const loadPersonaState = async (userId, username) => {
-    const collection = await getCollection();
+export const loadPersonaState = async (userId, username, collectionProvider = getCollection) => {
+    const collection = await collectionProvider();
     const user = await collection.findOne(
         { id: userId },
-        { projection: { personaEmotionalState: 1, personaRelationshipState: 1, personaEpisodes: 1, personaOpinions: 1, personaInteractionCount: 1 } }
+        { projection: { personaEmotionalState: 1, personaRelationshipState: 1, personaOpinions: 1, personaInteractionCount: 1 } }
     );
 
     return {
@@ -68,7 +68,6 @@ export const loadPersonaState = async (userId, username) => {
         username,
         emotionalState: normalizeState(user?.personaEmotionalState, DEFAULT_EMOTIONAL_STATE),
         relationshipState: normalizeState(user?.personaRelationshipState, DEFAULT_RELATIONSHIP_STATE),
-        episodes: Array.isArray(user?.personaEpisodes) ? user.personaEpisodes.slice(-40) : [],
         opinions: normalizeOpinions(user?.personaOpinions).length
             ? normalizeOpinions(user.personaOpinions)
             : [...DEFAULT_OPINIONS],
@@ -106,22 +105,11 @@ export const updatePersonaState = ({ emotionalState, relationshipState, analysis
     return { emotionalState: nextEmotional, relationshipState: nextRelationship };
 };
 
-const findRelevantEpisodes = (episodes, text) => {
-    const terms = String(text).toLowerCase().split(/\W+/).filter((term) => term.length > 3);
-    return episodes
-        .filter((episode) => typeof episode?.event === 'string')
-        .map((episode) => ({ episode, score: terms.filter((term) => episode.event.toLowerCase().includes(term)).length }))
-        .filter(({ score }) => score > 0)
-        .sort((a, b) => b.score - a.score || b.episode.importance - a.episode.importance)
-        .slice(0, 3)
-        .map(({ episode }) => episode);
-};
-
 export const preparePersonaTurn = async ({ userId, username, text, history = [], hasImage = false, hasAudio = false }) => {
     const state = await loadPersonaState(userId, username);
     const analysis = analyzeConversation({ text, history, hasImage, hasAudio });
     const nextState = updatePersonaState({ ...state, analysis });
-    const memories = findRelevantEpisodes(state.episodes, text);
+    const memories = [];
     const plan = planResponse({ ...nextState, analysis, memories, opinions: state.opinions });
 
     return {
@@ -138,8 +126,8 @@ export const preparePersonaTurn = async ({ userId, username, text, history = [],
     };
 };
 
-export const persistPersonaTurn = async (turn, response) => {
-    const collection = await getCollection();
+export const persistPersonaTurn = async (turn, response, collectionProvider = getCollection) => {
+    const collection = await collectionProvider();
     const eventText = (turn.analysis.text || (turn.analysis.hasImage ? 'O usuário enviou uma imagem para análise.' : 'O usuário interagiu com a Zero.'))
         .replace(/[\u0000-\u001F\u007F]/g, ' ')
         .replace(/\s+/g, ' ')
@@ -163,7 +151,7 @@ export const persistPersonaTurn = async (turn, response) => {
                     personaOpinions: turn.opinions,
                     personaLastUpdatedAt: episode.timestamp,
                 },
-                $push: { personaEpisodes: { $each: [episode], $slice: -40 } },
+                $unset: { personaEpisodes: '' },
                 $inc: { personaInteractionCount: 1 },
                 $setOnInsert: { registeredAt: episode.timestamp },
             },
@@ -177,6 +165,7 @@ export const persistPersonaTurn = async (turn, response) => {
             next: turn,
             analysis: turn.analysis,
             plan: turn.plan,
+            episode: { stored: false, importance: episode.importance, emotionalWeight: episode.emotionalWeight },
             persistence: 'failed',
         });
         throw error;
@@ -189,6 +178,7 @@ export const persistPersonaTurn = async (turn, response) => {
         next: turn,
         analysis: turn.analysis,
         plan: turn.plan,
+        episode: { stored: false, importance: episode.importance, emotionalWeight: episode.emotionalWeight },
         persistence: 'saved',
     });
 };

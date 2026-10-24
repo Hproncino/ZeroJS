@@ -6,7 +6,11 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch src/index.js",
-    "test": "node scripts/test.js"
+    "test": "node scripts/test.js",
+    "test:unit": "node --test scripts/*.test.js",
+    "test:document-context:live": "node scripts/documentContext.live.js",
+    "test:persona-db": "node scripts/personaState.db.integration.js",
+    "migrate:remove-persona-episodes": "node scripts/migrate-remove-persona-episodes.js"
   },
   "type": "module",
   "keywords": [],
@@ -16,7 +20,9 @@
     "@supabase/supabase-js": "^2.102.1",
     "discord.js": "^14.15.2",
     "dotenv": "^16.4.5",
+    "mammoth": "^1.13.0",
     "mongodb": "^6.21.0",
-    "openai": "^4.47.2"
+    "openai": "^4.47.2",
+    "pdf-parse": "^2.4.5"
   }
 }

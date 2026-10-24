@@ -98,7 +98,7 @@ export const setCurrentActivity = (text) => {
     setActivityInternal(text);
 };
 
-export const recordPersonaTransition = ({ userId, interactionCount, previous, next, analysis, plan, persistence = 'unknown' }) => {
+export const recordPersonaTransition = ({ userId, interactionCount, previous, next, analysis, plan, episode, persistence = 'unknown' }) => {
     console.log('[PERSONA_TRANSITION]', {
         userId: String(userId || 'unknown'),
         interactionCount: Number(interactionCount) || 0,
@@ -117,6 +117,11 @@ export const recordPersonaTransition = ({ userId, interactionCount, previous, ne
             responseMode: plan?.responseMode || 'unknown',
             secondaryBehaviors: Array.isArray(plan?.secondaryBehaviors) ? plan.secondaryBehaviors : [],
         },
+        episode: episode ? {
+            stored: Boolean(episode.stored),
+            importance: Number(episode.importance) || 0,
+            emotionalWeight: Number(episode.emotionalWeight) || 0,
+        } : null,
     });
 };
 
