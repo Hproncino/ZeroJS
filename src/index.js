@@ -435,7 +435,7 @@ client.on('messageCreate', async (message) => {
         const baseActivity = `messageCreate msgId=${message.id} user=${authorName} (${message.author?.id ?? 'unknown'}) guild=${guildName} channel=${channelId}`;
         setCurrentActivity(baseActivity);
 
-        console.log(`\n[MSG RECEBIDA] De: ${authorName} | Guild: ${guildName} | Channel ID: ${channelId} | Conteúdo: "${content.substring(0, 80)}"`);
+        console.log(`\n[MSG RECEBIDA] De: ${authorName} | Guild: ${guildName} | Channel ID: ${channelId} | texto=${content.length} caracteres | anexos=${message.attachments?.size ?? 0}`);
         
         if (message.system) {
             console.log('[FILTRO] Ignorando mensagem de sistema');
@@ -804,7 +804,7 @@ client.on('messageCreate', async (message) => {
                 const randomMessageForMemory = pickRandom(memorySourceCandidates) || userContent;
 
                 console.log(`[Memory] Persistindo memória para ${message.author.username}...`);
-                console.log(`[Memory] Mensagem sorteada para extração: ${randomMessageForMemory}`);
+                console.log(`[Memory] Fonte selecionada para extração: ${randomMessageForMemory.length} caracteres`);
 
                 setCurrentActivity(`${baseActivity} step=persistUserMemoryFromConversation`);
                 await persistUserMemoryFromConversation(

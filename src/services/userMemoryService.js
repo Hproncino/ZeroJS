@@ -106,14 +106,16 @@ export const persistUserMemoryFromConversation = async (
             console.warn(`[Memory] Nenhum insight extraído para usuário ${userId}`);
             return;
         }
-
-        console.log(`[Memory] Insights extraídos:`, insights);
+        const insightCounts = Object.fromEntries(
+            Object.entries(insights).map(([field, values]) => [field, Array.isArray(values) ? values.length : 0])
+        );
+        console.log('[Memory] Insight counts:', insightCounts);
         
         await saveUserMemoryInsights(userId, username, insights);
         
         console.log(`[Memory] Memória salva com sucesso para usuário ${userId}`);
     } catch (error) {
-        console.error(`[Memory] Erro ao persistir memória do usuário ${userId}:`, error);
+        console.error('[Memory] Erro ao persistir insights:', error?.message || error);
         throw error;
     }
 };
